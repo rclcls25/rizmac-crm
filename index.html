@@ -27,7 +27,13 @@
     --radius:16px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#1c2230;line-height:1.45;-webkit-font-smoothing:antialiased;}
+  /* No element is allowed to push the page wider than the screen — this is
+     what caused white empty strips to appear on the side when swiping
+     sideways in the installed app. overscroll-behavior-x also stops the
+     rubbery side-bounce that made the whole app feel like it was "sliding"
+     off its own background instead of feeling stuck in place like a real app. */
+  html{overflow-x:hidden;width:100%;}
+  body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#1c2230;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden;width:100%;overscroll-behavior-x:none;}
   header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:16px 30px;box-shadow:var(--shadow-md);position:relative;}
   header h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.2px;}
   header p{margin:5px 0 0;font-size:13px;color:#c7d0e6;}
@@ -66,14 +72,17 @@
     .header-btn-grid{grid-template-columns:repeat(2,1fr);justify-self:stretch;width:100%;
       min-height:0;align-content:stretch;}
     .header-btn-grid .btn-primary{grid-column:span 2;}
-    .header-corner-status{position:static;transform:none;justify-content:center;
-      margin-top:6px;left:auto;bottom:auto;}
+    /* Tucked into its own small corner tag instead of sitting in the centered
+       flow next to the logo — was reading as attached to it, which looked
+       messy. top-right corner, well clear of the centered logo/title. */
+    .header-corner-status{position:absolute;top:10px;right:10px;left:auto;bottom:auto;
+      transform:scale(.58);transform-origin:right top;justify-content:flex-end;margin-top:0;}
   }
   .header-btn-grid .btn{background:rgba(255,255,255,.10);color:#e8ede9;border:1px solid rgba(255,255,255,.20);
     box-shadow:none;padding:7px 12px;font-size:12.5px;font-weight:500;white-space:nowrap;}
   .header-btn-grid .btn:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none;}
-  .header-btn-grid .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;border-color:transparent;grid-column:span 3;}
-  .header-btn-grid .btn-primary:hover{background:#d8ae5c;}
+  .header-btn-grid .btn-primary{background:#2f8a5c;color:#fff;font-weight:700;border-color:transparent;grid-column:span 3;}
+  .header-btn-grid .btn-primary:hover{background:#26744c;}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
   @media (max-width:760px){ .wrap{padding:14px 12px 40px;} }
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;margin-bottom:18px;}
@@ -328,8 +337,8 @@
     background:#fbeeed;border:1px solid #edc4c1;color:#93362f;border-radius:var(--radius);padding:13px 16px;margin-bottom:16px;font-size:13.5px;box-shadow:var(--shadow-sm);}
   .action-banner.zero{background:var(--sage-light);border-color:#c8e0d3;color:#2f5c45;}
   .action-banner b{font-weight:700;}
-  .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.18);}
-  .btn-primary:hover{background:#d8ae5c;box-shadow:0 3px 10px rgba(0,0,0,.22);}
+  .btn-primary{background:#2f8a5c;color:#fff;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.18);}
+  .btn-primary:hover{background:#26744c;box-shadow:0 3px 10px rgba(0,0,0,.22);}
   /* Rizmac/Najmat switcher sits directly under the title, in its own dark
      pill track — active tab picked out in soft white so it reads clearly
      against the green header without competing with the gold CTA button. */
@@ -523,6 +532,7 @@
         <div class="tool-group-row">
           <button class="btn ghost" id="archiveToggleBtn" onclick="toggleArchivedView()">🗄 Show archived (<span id="archiveCount">0</span>)</button>
           <button class="btn ghost" id="deletedToggleBtn" onclick="toggleDeletedView()">🗑 Show deleted (<span id="deletedCount">0</span>)</button>
+          <button class="btn ghost" onclick="moveRizmacSegmentToNajmat()" title="For when a whole segment was entered on the wrong tab by mistake — moves it over to Najmat as manufacturing leads.">🔀 Move a segment to Najmat</button>
         </div>
       </div>
       <div class="tool-group tg-filters">
@@ -1071,6 +1081,79 @@ function airtableDelete(rid){
   if(DATA_BACKEND==='drive') return driveDeleteRecord('rizmacContacts', rid);
   return fetch(apiBase() + '?records[]=' + encodeURIComponent(rid), { method:'DELETE', headers:{ 'Authorization':'Bearer '+AT_TOKEN } })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
+}
+
+// One-time correction tool for when a whole segment was entered under the wrong
+// tab by mistake (e.g. a Najmat-type manufacturing/CMT-factory segment that got
+// created inside Rizmac instead). Converts each matching Rizmac contact into a
+// Najmat-shaped lead, creates it there, then permanently removes the original
+// from Rizmac (a real delete, not archive — it never belonged there).
+// najmatToFields()/najmatCreate() are defined further down with the rest of the
+// Najmat data layer but are already in scope by the time this can be clicked.
+const RZ_STATUS_TO_NAJMAT_STAGE = {
+  'Not Contacted':'New Lead','Connection Sent':'Contacted','Accepted':'Contacted',
+  'Follow-up 1 Sent':'Contacted','Follow-up 2 Sent':'Contacted','Needs Your Follow-up':'Contacted',
+  'On Conversation':'Negotiation','Meeting Booked':'Contacted','Inquiry Received':'Inquiry Received',
+  'Quoted':'Quoted','Ordered':'Order Placed','Not Interested':'Not Interested / Lost',
+  'Connected':'Contacted','Blocked':'Not Interested / Lost'
+};
+function moveRizmacSegmentToNajmat(){
+  const segments = [...new Set(DATA.filter(r=>!r.deleted).map(r=>r.segment).filter(Boolean))].sort();
+  if(!segments.length){ alert('No segments found in your active Rizmac list.'); return; }
+  const counts = segments.map(s=>DATA.filter(r=>r.segment===s && !r.deleted).length);
+  const listStr = segments.map((s,i)=>(i+1)+'. '+s+'  ('+counts[i]+' contact'+(counts[i]===1?'':'s')+')').join('\n');
+  const pick = prompt('Which Rizmac segment should be moved over to Najmat?\n\nType the number from this list:\n\n'+listStr);
+  if(pick===null) return;
+  const idx = parseInt(pick,10)-1;
+  const segment = segments[idx];
+  if(!segment){ alert('That\'s not one of the numbers on the list — nothing was moved.'); return; }
+  const matches = DATA.filter(r=>r.segment===segment && !r.deleted);
+  if(!matches.length){ alert('No active contacts in that segment — nothing to move.'); return; }
+  if(!confirm('Move all '+matches.length+' contact'+(matches.length===1?'':'s')+' from Rizmac segment "'+segment+'" over to Najmat as manufacturing leads?\n\nThey will be fully removed from Rizmac (not archived) and added fresh under Najmat, with their notes, priority, and meeting details carried over. This cannot be undone automatically.')) return;
+
+  syncStatus('busy', 'Moving '+matches.length+' to Najmat…');
+  let done = 0, failed = 0;
+  const jobs = matches.map(r=>{
+    const logText = (r.conversation_log||[]).slice().reverse().map(l=>l.date+': '+l.note).join('\n');
+    const najmatRec = {
+      company_name: r.company || r.name || '',
+      contact_name: r.name || '',
+      title: r.title || '',
+      country: r.country || '',
+      manufacturing_need: ['CMT / Subcontracting'],
+      email: r.email || '',
+      mobile: r.phone || '',
+      whatsapp_number: r.whatsapp_number || '',
+      company_phone: r.company_phone || '',
+      linkedin_url: r.linkedin_url || '',
+      website: '',
+      source: r.source || '',
+      deal_value: r.deal_value || 0,
+      moq_notes: '',
+      priority: r.priority || 'Medium',
+      stage: RZ_STATUS_TO_NAJMAT_STAGE[r.status] || 'New Lead',
+      next_followup: r.next_followup || '',
+      last_contact: r.last_contact || '',
+      notes: (logText ? logText+'\n\n' : '') + 'Moved from Rizmac segment "'+segment+'" on '+today()+' (was entered under the wrong tab by mistake).',
+      record_status: r.archived ? 'Archived' : 'Active',
+      meeting_status: r.meeting_status || 'Not Scheduled',
+      meeting_datetime: r.meeting_datetime || '',
+      meeting_type: r.meeting_type || '',
+      meeting_prep_notes: r.meeting_prep_notes || '',
+      meeting_outcome_notes: r.meeting_outcome_notes || ''
+    };
+    return najmatCreate(najmatToFields(najmatRec))
+      .then(()=>airtableDelete(r._rid))
+      .then(()=>{ done++; })
+      .catch(err=>{ failed++; console.error('Move failed for', r.name, err); });
+  });
+  Promise.all(jobs).then(()=>Promise.all([loadDataFromAirtable(), loadNajmatData()])).then(()=>{
+    syncStatus('ok', 'Synced');
+    alert('Done — moved '+done+' contact'+(done===1?'':'s')+' to Najmat.' + (failed ? (' '+failed+' failed — check that you\'re online and try again for those.') : ' Check the Najmat tab to see them.'));
+  }).catch(err=>{
+    syncStatus('err','Error');
+    alert('Something went wrong partway through: ' + err.message + '\n\nCheck both tabs before retrying — some contacts may have already moved.');
+  });
 }
 // ============================================================================
 // Google Drive data backend (gap #5) — lets the whole CRM run without Airtable.
@@ -2111,6 +2194,26 @@ function applyFilters(){
       banner.innerHTML = `<span><b>${filtered.length} contact${filtered.length===1?'':'s'}</b> need${filtered.length===1?'s':''} a follow-up today (overdue or due today), sorted most urgent first.</span>
         <button class="btn ghost" onclick="document.getElementById('fFollowup').value=''; applyFilters();">Show all ${DATA.filter(r=>!r.archived && !r.deleted).length} contacts instead</button>`;
     }
+  } else if(filtered.length===0 && (segment||title||country||status||source||priority||phoneFilter||q) && !showDeleted && !showArchived){
+    // A segment/title/country/etc filter can legitimately show zero here if
+    // every contact matching it happens to be archived or deleted (both are
+    // hidden from the normal active view) — that used to look exactly like a
+    // broken filter with no explanation. Check for that specific case and
+    // say so plainly, with a one-click way to go see them.
+    const hiddenArchived = DATA.filter(r=>!r.deleted && r.archived && (!segment||r.segment===segment) && (!title||(r.title||'').trim()===title) && (!country||r.country===country) && (!status||(r.status||'Not Contacted')===status) && (!source||(r.source||'')===source) && (!priority||(r.priority||'Medium')===priority)).length;
+    const hiddenDeleted = DATA.filter(r=>r.deleted && (!segment||r.segment===segment) && (!title||(r.title||'').trim()===title) && (!country||r.country===country) && (!status||(r.status||'Not Contacted')===status) && (!source||(r.source||'')===source) && (!priority||(r.priority||'Medium')===priority)).length;
+    if(hiddenArchived || hiddenDeleted){
+      banner.style.display = 'flex';
+      banner.className = 'action-banner zero';
+      const bits = [];
+      if(hiddenArchived) bits.push(hiddenArchived+' archived');
+      if(hiddenDeleted) bits.push(hiddenDeleted+' deleted');
+      banner.innerHTML = `<span>ℹ No <b>active</b> contacts match these filters — but ${bits.join(' and ')} contact${(hiddenArchived+hiddenDeleted)===1?'':'s'} do. That's why the list looks empty; nothing is broken.</span>
+        ${hiddenArchived?'<button class="btn sage ghost" onclick="toggleArchivedView();">View archived</button>':''}
+        ${hiddenDeleted?'<button class="btn sage ghost" onclick="toggleDeletedView();">View deleted</button>':''}`;
+    } else {
+      banner.style.display = 'none';
+    }
   } else {
     banner.style.display = 'none';
   }
@@ -2443,6 +2546,7 @@ function openModal(id){
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 function closeModal(){
   document.getElementById('overlay').classList.remove('show');
@@ -2669,6 +2773,7 @@ function showMeetingsView(){
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 function showWeeklyDigest(){
   const weekAgoDate = new Date(); weekAgoDate.setDate(weekAgoDate.getDate()-7);
@@ -2729,6 +2834,7 @@ function showWeeklyDigest(){
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 
 // ---------- Today view ----------
@@ -2812,6 +2918,7 @@ function renderTodayView(){
     <div class="modal-actions"><div></div><div><button class="btn" onclick="closeModal()">Close</button></div></div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 
 async function exportData(){
@@ -3436,6 +3543,7 @@ function openNajmatModal(rid){
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 
 function saveNajmatModal(rid){
@@ -3544,6 +3652,7 @@ function showNajmatMeetingsView(){
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 
 // ---------- Najmat Today view ----------
@@ -3601,6 +3710,7 @@ function najmatRenderTodayView(){
     <div class="modal-actions"><div></div><div><button class="btn" onclick="closeModal()">Close</button></div></div>
   `;
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 
 // Extends the existing Rizmac auto-backup folder (same File System Access handle,
@@ -3743,6 +3853,7 @@ function showTodoView(dateOverride){
   const items = rzTodoItemsForDate(D).sort((a,b)=>(a.done===b.done)?0:(a.done?1:-1));
   document.getElementById('modalBody').innerHTML = todoBodyHtml(D, items, false);
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 function todoActionButtons(it, isNajmat){
   const suffix = isNajmat ? 'Najmat' : '';
@@ -3971,6 +4082,7 @@ function najmatShowTodoView(dateOverride){
   const items = nmTodoItemsForDate(D).sort((a,b)=>(a.done===b.done)?0:(a.done?1:-1));
   document.getElementById('modalBody').innerHTML = todoBodyHtml(D, items, true);
   document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
 }
 function najmatTodoAddTask(D){
   const title = document.getElementById('todoNewTitleNajmat').value.trim();
