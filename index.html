@@ -1098,18 +1098,25 @@ const RZ_STATUS_TO_NAJMAT_STAGE = {
   'Connected':'Contacted','Blocked':'Not Interested / Lost'
 };
 function moveRizmacSegmentToNajmat(){
-  const segments = [...new Set(DATA.filter(r=>!r.deleted).map(r=>r.segment).filter(Boolean))].sort();
-  if(!segments.length){ alert('No segments found in your active Rizmac list.'); return; }
-  const counts = segments.map(s=>DATA.filter(r=>r.segment===s && !r.deleted).length);
-  const listStr = segments.map((s,i)=>(i+1)+'. '+s+'  ('+counts[i]+' contact'+(counts[i]===1?'':'s')+')').join('\n');
-  const pick = prompt('Which Rizmac segment should be moved over to Najmat?\n\nType the number from this list:\n\n'+listStr);
-  if(pick===null) return;
-  const idx = parseInt(pick,10)-1;
-  const segment = segments[idx];
-  if(!segment){ alert('That\'s not one of the numbers on the list — nothing was moved.'); return; }
-  const matches = DATA.filter(r=>r.segment===segment && !r.deleted);
-  if(!matches.length){ alert('No active contacts in that segment — nothing to move.'); return; }
-  if(!confirm('Move all '+matches.length+' contact'+(matches.length===1?'':'s')+' from Rizmac segment "'+segment+'" over to Najmat as manufacturing leads?\n\nThey will be fully removed from Rizmac (not archived) and added fresh under Najmat, with their notes, priority, and meeting details carried over. This cannot be undone automatically.')) return;
+  // Free-text search across segment, company, title AND name (not just an exact
+  // segment-name list) — the numbered segment list turned out not to be reliable
+  // enough on its own: a batch of leads can land with the segment field blank,
+  // spelled slightly differently, or the "category" really living in the company
+  // name instead, and a fixed list has no way to surface those. Searching text
+  // finds them regardless of which field it's actually sitting in.
+  const term = prompt('Type a word to search for (matches segment, company, title, or name — e.g. "CMT" or "Factory"). This searches your active Rizmac contacts.');
+  if(term===null) return;
+  const q = term.trim().toLowerCase();
+  if(!q){ alert('Type something to search for — nothing was moved.'); return; }
+  const matches = DATA.filter(r=>!r.deleted && [r.segment,r.company,r.title,r.name].join(' ').toLowerCase().includes(q));
+  if(!matches.length){
+    alert('No active Rizmac contacts matched "'+term+'" in their segment, company, title, or name.\n\nDouble-check the spelling, or try a shorter/simpler word (e.g. just "CMT" instead of the full category name).');
+    return;
+  }
+  const preview = matches.slice(0,25).map(r=>'• '+(r.name||'(no name)')+' — '+(r.company||'—')+' ['+(r.segment||'no segment set')+']').join('\n')
+    + (matches.length>25 ? '\n…and '+(matches.length-25)+' more' : '');
+  if(!confirm('Found '+matches.length+' contact'+(matches.length===1?'':'s')+' matching "'+term+'":\n\n'+preview+'\n\nMove ALL of these from Rizmac over to Najmat as manufacturing leads?\n\nThey will be fully removed from Rizmac (not archived) and added fresh under Najmat, with their notes, priority, and meeting details carried over. This cannot be undone automatically.')) return;
+  const segment = term;
 
   syncStatus('busy', 'Moving '+matches.length+' to Najmat…');
   let done = 0, failed = 0;
