@@ -280,6 +280,9 @@
   .mini-dot.on{background:#3ecb7e;}
   .mini-dot.warn{background:var(--gold);}
   @keyframes pulse{50%{opacity:.35;}}
+  .backend-badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:4px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+  .backend-badge.drive{background:#e6f0ff;color:#1a56c4;border:1px solid #b8d1fb;}
+  .backend-badge.airtable{background:#fdf0d5;color:#8a5a00;border:1px solid #f0d9a8;}
   .table-wrap{max-height:640px;overflow-y:auto;border-radius:var(--radius);box-shadow:var(--shadow-md);border:1px solid var(--border);}
   .table-wrap table{box-shadow:none;border:none;border-radius:0;}
   .li-btn{display:inline-flex;align-items:center;gap:5px;background:#0A66C2;color:#fff;text-decoration:none;
@@ -377,6 +380,7 @@
       <button class="btn ghost" onclick="showTodoView()">📋 To-Do (<span id="rzTodoCount">0</span>)</button>
       <button class="btn ghost" id="btn-refresh" onclick="loadDataFromAirtable()">🔄 Refresh</button>
       <button class="btn ghost" id="btn-settings" title="Disconnect / change token">⚙</button>
+      <span class="backend-badge" id="storageBackendBadge" title="Where your CRM data is actually stored right now">…</span>
       <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
     </div>
     <div style="display:none;align-items:center;gap:8px;" id="najmatHeaderActions">
@@ -384,6 +388,7 @@
       <button class="btn ghost" onclick="showNajmatMeetingsView()">📅 All Meetings (<span id="nmMeetingsScheduledCount">0</span>)</button>
       <button class="btn ghost" onclick="najmatShowTodoView()">📋 To-Do (<span id="nmTodoCount">0</span>)</button>
       <button class="btn ghost" id="btn-najmat-refresh" onclick="loadNajmatData()">🔄 Refresh</button>
+      <span class="backend-badge" id="storageBackendBadgeNajmat" title="Where your CRM data is actually stored right now">…</span>
       <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
     </div>
   </div>
@@ -511,7 +516,7 @@
     <button id="nextBtn" onclick="changePage(1)">Next ▶</button>
   </div>
 
-  <div class="footer-note">Rizmac CRM — live-synced with Airtable. Changes save automatically in the background.</div>
+  <div class="footer-note" id="rizmacFooterNote">Rizmac CRM — live-synced. Changes save automatically in the background.</div>
 </div>
 
 <div class="wrap" id="najmatPanel" style="display:none;">
@@ -594,7 +599,7 @@
     <button id="nmNextBtn" onclick="najmatChangePage(1)">Next ▶</button>
   </div>
 
-  <div class="footer-note">Najmat AlMashriq — live-synced with Airtable. Changes save automatically in the background.</div>
+  <div class="footer-note" id="najmatFooterNote">Najmat AlMashriq — live-synced. Changes save automatically in the background.</div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -999,6 +1004,23 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'rizmac_crm_data.json';
 const LS_BACKEND = 'rizmac_crm_backend';
 let DATA_BACKEND = localStorage.getItem(LS_BACKEND) || 'airtable';
+// Visible, always-on indicator so Mohammad can tell at a glance whether this
+// session is reading/writing his own Google Drive file or the Airtable base —
+// the two backends look identical otherwise, which was confusing.
+function paintBackendBadge(){
+  const isDrive = DATA_BACKEND === 'drive';
+  const label = isDrive ? '☁ Google Drive' : '🗂 Airtable';
+  const cls = 'backend-badge ' + (isDrive ? 'drive' : 'airtable');
+  ['storageBackendBadge','storageBackendBadgeNajmat'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){ el.textContent = label; el.className = cls; }
+  });
+  const noteSuffix = isDrive ? ' Stored in your own Google Drive.' : ' Stored in Airtable.';
+  const rzNote = document.getElementById('rizmacFooterNote');
+  const nmNote = document.getElementById('najmatFooterNote');
+  if(rzNote) rzNote.textContent = 'Rizmac CRM — live-synced.' + noteSuffix + ' Changes save automatically in the background.';
+  if(nmNote) nmNote.textContent = 'Najmat AlMashriq — live-synced.' + noteSuffix + ' Changes save automatically in the background.';
+}
 let driveTokenClient = null;
 let DRIVE_TOKEN = null;
 let DRIVE_FILE_ID = null;
@@ -1450,6 +1472,7 @@ function handleMoveToDrive(){
   });
 }
 function boot(){
+  paintBackendBadge();
   if(DATA_BACKEND==='drive'){
     document.getElementById('setup-screen').style.display = 'none';
     const cachedToken = loadDriveTokenCache();
