@@ -1046,7 +1046,13 @@ const GOOGLE_CLIENT_ID = '136428099233-ebqv4hortg0c501etiv7ahao62lm0eda.apps.goo
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'rizmac_crm_data.json';
 const LS_BACKEND = 'rizmac_crm_backend';
-let DATA_BACKEND = localStorage.getItem(LS_BACKEND) || 'airtable';
+// Default to Google Drive on any device/browser that has no saved preference
+// yet (e.g. a phone opening this for the first time) — Airtable was only ever
+// meant as a fallback, but defaulting to it here made brand-new devices show
+// the old "enter your Personal Access Token" setup screen instead of the
+// Google sign-in screen, which is confusing since Mohammad no longer uses
+// Airtable at all.
+let DATA_BACKEND = localStorage.getItem(LS_BACKEND) || 'drive';
 // Visible, always-on indicator so Mohammad can tell at a glance whether this
 // session is reading/writing his own Google Drive file or the Airtable base —
 // the two backends look identical otherwise, which was confusing.
