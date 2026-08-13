@@ -652,6 +652,7 @@
       <div class="tool-group-row">
         <button class="btn ghost" id="nmArchiveToggleBtn" onclick="najmatToggleArchivedView()">🗄 Show archived (<span id="nmArchiveCount">0</span>)</button>
         <button class="btn ghost" id="nmDeletedToggleBtn" onclick="najmatToggleDeletedView()">🗑 Show deleted (<span id="nmDeletedCount">0</span>)</button>
+        <button class="btn ghost" onclick="cleanupNajmatDuplicates()" title="Finds leads that got created more than once (e.g. from a repeated 'Move to Najmat' run) and removes the extra copies, keeping the original.">🧹 Clean up duplicates</button>
       </div>
     </div>
     <div class="tool-group tg-reports">
@@ -3132,6 +3133,62 @@ function najmatCreate(fields){
   if(DATA_BACKEND==='drive') return driveCreateRecord('najmatContacts', fields);
   return fetch(najmatApiBase(), { method:'POST', headers: najmatAuthHeaders(), body: JSON.stringify({ typecast:true, records:[{fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
+}
+function najmatDelete(rid){
+  if(DATA_BACKEND==='drive') return driveDeleteRecord('najmatContacts', rid);
+  return fetch(najmatApiBase() + '?records[]=' + encodeURIComponent(rid), { method:'DELETE', headers:{ 'Authorization':'Bearer '+AT_TOKEN } })
+    .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
+}
+// One-click cleanup for exactly the situation the earlier save bug could leave
+// behind: the same lead created more than once in Najmat. Groups by LinkedIn
+// URL / mobile / WhatsApp / email / (name+company) the same way the Rizmac
+// "Find duplicates" tool does, keeps the OLDEST copy in each group (earliest
+// created_at — the original, most likely to have any manual edits already
+// made to it) and permanently removes the newer copies. Shows exactly what
+// it's about to remove before touching anything.
+function cleanupNajmatDuplicates(){
+  function norm(s){ return (s||'').toString().toLowerCase().replace(/[^a-z0-9]/g,''); }
+  const live = NAJMAT_DATA.filter(r=>!r.deleted);
+  const groups = {};
+  live.forEach(r=>{
+    const keys = [];
+    if(r.linkedin_url) keys.push('url:'+norm(r.linkedin_url));
+    if(r.mobile) keys.push('mob:'+norm(r.mobile));
+    if(r.whatsapp_number) keys.push('wa:'+norm(r.whatsapp_number));
+    if(r.email) keys.push('em:'+norm(r.email));
+    if(r.contact_name && r.company_name) keys.push('nc:'+norm(r.contact_name)+'|'+norm(r.company_name));
+    else if(r.company_name) keys.push('c:'+norm(r.company_name));
+    keys.forEach(k=>{ (groups[k] = groups[k]||[]).push(r); });
+  });
+  const seen = new Set();
+  const toRemove = [];
+  const dupeGroupsForDisplay = [];
+  Object.values(groups).forEach(list=>{
+    const uniqueRecs = [...new Map(list.map(r=>[r._rid, r])).values()];
+    if(uniqueRecs.length<2) return;
+    const groupKey = uniqueRecs.map(r=>r._rid).sort().join(',');
+    if(seen.has(groupKey)) return;
+    seen.add(groupKey);
+    const sorted = uniqueRecs.slice().sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+    const keep = sorted[0];
+    const remove = sorted.slice(1);
+    remove.forEach(r=>toRemove.push(r));
+    dupeGroupsForDisplay.push('• Keeping: '+(keep.contact_name||keep.company_name)+' — removing '+remove.length+' newer copy'+(remove.length===1?'':'ies'));
+  });
+  if(!toRemove.length){ alert('No duplicate Najmat leads found (matched by LinkedIn URL, mobile, WhatsApp, email, or name+company).'); return; }
+  if(!confirm('Found '+toRemove.length+' duplicate lead'+(toRemove.length===1?'':'s')+' in Najmat — the oldest copy of each will be kept, the extra copies removed:\n\n'+dupeGroupsForDisplay.join('\n')+'\n\nRemove the '+toRemove.length+' duplicate cop'+(toRemove.length===1?'y':'ies')+' now? This cannot be undone automatically.')) return;
+
+  najmatSyncStatus('busy', 'Removing '+toRemove.length+' duplicate(s)…');
+  let done=0, failed=0;
+  Promise.all(toRemove.map(r=>najmatDelete(r._rid).then(()=>{done++;}).catch(err=>{failed++; console.error('Duplicate remove failed for', r.contact_name, err);})))
+    .then(()=>loadNajmatData())
+    .then(()=>{
+      najmatSyncStatus('ok','Synced');
+      alert('Done — removed '+done+' duplicate lead'+(done===1?'':'s')+' from Najmat.' + (failed?(' '+failed+' failed — check you\'re online and try again.'):''));
+    }).catch(err=>{
+      najmatSyncStatus('err','Error');
+      alert('Something went wrong: '+err.message);
+    });
 }
 
 function najmatFromAirtable(rec){
