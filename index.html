@@ -22,10 +22,36 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#1c2230;line-height:1.45;-webkit-font-smoothing:antialiased;}
-  header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:26px 30px;box-shadow:var(--shadow-md);position:relative;}
-  header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--gold),transparent 75%);opacity:.9;}
-  header h1{margin:0;font-size:22px;font-weight:700;letter-spacing:.2px;}
+  header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:16px 30px;box-shadow:var(--shadow-md);position:relative;}
+  header h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.2px;}
   header p{margin:5px 0 0;font-size:13px;color:#c7d0e6;}
+  /* Three-column grid (left info / centered logo / right buttons) that
+     auto-sizes to whichever column is tallest — no absolute positioning, so
+     nothing can silently overflow past the header's visible background the
+     way it did with the fixed-height version. */
+  .topline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;}
+  .header-brand-block{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;}
+  /* Small status readout, pinned to the header's own bottom-left corner —
+     a separate element, deliberately not aligned with the title/tabs above it */
+  .header-corner-status{position:absolute;left:16px;bottom:8px;display:flex;align-items:center;gap:5px;transform:scale(.72);transform-origin:left center;}
+  /* Logo: horizontally centered by the grid column, and explicitly
+     vertically centered against the column's full stretched height */
+  /* Same round-framed badge treatment for whichever logo is currently shown,
+     so Rizmac and Najmat look visually consistent regardless of the source
+     image file's own styling. */
+  .header-logo-center{justify-self:center;align-self:center;background:#fff;border:2px solid var(--gold);
+    border-radius:14px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+  /* Fixed min-height (matching Rizmac's taller 3-row button set) so the
+     header does NOT change size when switching to Najmat's shorter 2-row
+     set — a shrinking header was pushing the bottom-left status readout up
+     into the tab buttons above it. */
+  .header-btn-grid{justify-self:end;align-self:center;display:grid;grid-template-columns:repeat(3,auto);
+    gap:7px 8px;min-height:108px;align-content:start;}
+  .header-btn-grid .btn{background:rgba(255,255,255,.10);color:#e8ede9;border:1px solid rgba(255,255,255,.20);
+    box-shadow:none;padding:7px 12px;font-size:12.5px;font-weight:500;white-space:nowrap;}
+  .header-btn-grid .btn:hover{background:rgba(255,255,255,.18);transform:none;box-shadow:none;}
+  .header-btn-grid .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;border-color:transparent;grid-column:span 3;}
+  .header-btn-grid .btn-primary:hover{background:#d8ae5c;}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;margin-bottom:18px;}
   .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-sm);transition:box-shadow .18s ease, transform .18s ease;}
@@ -268,12 +294,17 @@
     background:#fbeeed;border:1px solid #edc4c1;color:#93362f;border-radius:var(--radius);padding:13px 16px;margin-bottom:16px;font-size:13.5px;box-shadow:var(--shadow-sm);}
   .action-banner.zero{background:var(--sage-light);border-color:#c8e0d3;color:#2f5c45;}
   .action-banner b{font-weight:700;}
-  .topline{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
-  .company-tabs{display:flex;gap:8px;margin-top:16px;}
-  .tab-btn{background:rgba(255,255,255,.08);color:#c7d0e6;border:1px solid rgba(255,255,255,.28);padding:7px 20px;
-    border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease;}
-  .tab-btn:hover{background:rgba(255,255,255,.16);}
-  .tab-btn.active{background:#fff;color:var(--navy);border-color:#fff;}
+  .topline{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;}
+  .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.18);}
+  .btn-primary:hover{background:#d8ae5c;box-shadow:0 3px 10px rgba(0,0,0,.22);}
+  /* Rizmac/Najmat switcher sits directly under the title, in its own dark
+     pill track — active tab picked out in soft white so it reads clearly
+     against the green header without competing with the gold CTA button. */
+  .company-tabs{display:inline-flex;gap:3px;background:rgba(0,0,0,.16);padding:4px;border-radius:14px;}
+  .tab-btn{background:transparent;color:#cfe0d8;border:1px solid transparent;padding:6px 20px;
+    border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease;}
+  .tab-btn:hover{background:rgba(255,255,255,.10);}
+  .tab-btn.active{background:#fff;color:var(--navy);}
   .sync-status{font-size:12px;color:#c7d0e6;display:inline-flex;align-items:center;gap:6px;}
   .sync-dot{width:7px;height:7px;border-radius:50%;background:#3ecb7e;}
   .sync-dot.busy{background:var(--gold);animation:pulse 1s infinite;}
@@ -366,37 +397,47 @@
 </div>
 
 <header>
+  <!-- Storage/sync status: a small separate readout tucked into the header's
+       own bottom-left corner — detached from the title/tabs column entirely,
+       not left-aligned with them. Safe to position absolutely now that the
+       header's real height always fits its tallest column (the button grid),
+       so this can never get clipped the way it did before that fix. -->
+  <div class="header-corner-status" id="rizmacHeaderActions">
+    <span class="backend-badge" id="storageBackendBadge" title="Where your CRM data is actually stored right now">…</span>
+    <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
+  </div>
+  <div class="header-corner-status" id="najmatHeaderActions" style="display:none;">
+    <span class="backend-badge" id="storageBackendBadgeNajmat" title="Where your CRM data is actually stored right now">…</span>
+    <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
+  </div>
   <div class="topline">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <img id="header-logo" src="" alt="Rizmac" style="width:42px;height:42px;object-fit:contain;">
-      <div>
-        <h1 id="pageTitle">Sales Management System — Rizmac Apparels</h1>
-        <p id="pageSubtitle">Your uniform &amp; workwear prospect list, all in one calm view · connection tracking · follow-ups · reminders</p>
+    <!-- Left column: title + tab switcher only -->
+    <div class="header-brand-block">
+      <h1 id="pageTitle">Sales Management System</h1>
+      <p id="pageSubtitle" style="display:none;">Your uniform &amp; workwear prospect list, all in one calm view · connection tracking · follow-ups · reminders</p>
+      <div class="company-tabs">
+        <button class="tab-btn" id="tabBtnRizmac" onclick="switchCompanyTab('rizmac')">Rizmac</button>
+        <button class="tab-btn" id="tabBtnNajmat" onclick="switchCompanyTab('najmat')">Najmat</button>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;" id="rizmacHeaderActions">
-      <button class="btn" onclick="openModal(null)">+ Add new prospect</button>
-      <button class="btn ghost" id="btn-backup-folder" onclick="chooseBackupFolder()" title="Click to choose a backup folder. Every save will back up here automatically.">Auto-backup <span id="backupDot" class="mini-dot"></span></button>
-      <button class="btn ghost" id="btn-move-to-drive" style="display:none;" onclick="handleMoveToDrive()" title="Move this CRM to your own Google Drive instead of Airtable">☁ Move to Google Drive</button>
-      <button class="btn ghost" onclick="showMeetingsView()">📅 All Meetings (<span id="meetingsScheduledCount">0</span>)</button>
-      <button class="btn ghost" onclick="showTodoView()">📋 To-Do (<span id="rzTodoCount">0</span>)</button>
-      <button class="btn ghost" id="btn-refresh" onclick="loadDataFromAirtable()">🔄 Refresh</button>
-      <button class="btn ghost" id="btn-settings" title="Disconnect / change token">⚙</button>
-      <span class="backend-badge" id="storageBackendBadge" title="Where your CRM data is actually stored right now">…</span>
-      <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
+    <!-- Middle column: logo alone, centered by the grid itself -->
+    <img id="header-logo" src="" alt="Rizmac" class="header-logo-center" style="width:48px;height:48px;object-fit:contain;">
+    <!-- Right column: utility buttons, 3-per-row -->
+    <div class="header-btn-grid" id="rizmacHeaderBtns">
+      <button class="btn btn-primary" onclick="openModal(null)">+ Add new prospect</button>
+      <button class="btn" id="btn-backup-folder" onclick="chooseBackupFolder()" title="Click to choose a backup folder. Every save will back up here automatically.">Auto-backup <span id="backupDot" class="mini-dot"></span></button>
+      <button class="btn" onclick="showMeetingsView()">📅 Meetings (<span id="meetingsScheduledCount">0</span>)</button>
+      <button class="btn" onclick="showTodoView()">📋 To-Do (<span id="rzTodoCount">0</span>)</button>
+      <button class="btn" id="btn-refresh" onclick="loadDataFromAirtable()">🔄 Refresh</button>
+      <button class="btn" id="btn-settings" title="Disconnect / change token">⚙</button>
+      <button class="btn" id="btn-move-to-drive" style="display:none;" onclick="handleMoveToDrive()" title="Move this CRM to your own Google Drive instead of Airtable">☁ Move to Drive</button>
     </div>
-    <div style="display:none;align-items:center;gap:8px;" id="najmatHeaderActions">
-      <button class="btn" onclick="openNajmatModal(null)">+ Add new lead</button>
-      <button class="btn ghost" onclick="showNajmatMeetingsView()">📅 All Meetings (<span id="nmMeetingsScheduledCount">0</span>)</button>
-      <button class="btn ghost" onclick="najmatShowTodoView()">📋 To-Do (<span id="nmTodoCount">0</span>)</button>
-      <button class="btn ghost" id="btn-najmat-refresh" onclick="loadNajmatData()">🔄 Refresh</button>
-      <span class="backend-badge" id="storageBackendBadgeNajmat" title="Where your CRM data is actually stored right now">…</span>
-      <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
+    <div class="header-btn-grid" id="najmatHeaderBtns" style="display:none;">
+      <button class="btn btn-primary" onclick="openNajmatModal(null)">+ Add new lead</button>
+      <button class="btn" onclick="showNajmatMeetingsView()">📅 Meetings (<span id="nmMeetingsScheduledCount">0</span>)</button>
+      <button class="btn" onclick="najmatShowTodoView()">📋 To-Do (<span id="nmTodoCount">0</span>)</button>
+      <button class="btn" id="btn-najmat-refresh" onclick="loadNajmatData()">🔄 Refresh</button>
     </div>
-  </div>
-  <div class="company-tabs">
-    <button class="tab-btn" id="tabBtnRizmac" onclick="switchCompanyTab('rizmac')">Rizmac</button>
-    <button class="tab-btn" id="tabBtnNajmat" onclick="switchCompanyTab('najmat')">Najmat</button>
   </div>
 </header>
 
@@ -3964,11 +4005,13 @@ function switchCompanyTab(tab){
   document.getElementById('najmatPanel').style.display = isRizmac ? 'none' : '';
   document.getElementById('rizmacHeaderActions').style.display = isRizmac ? '' : 'none';
   document.getElementById('najmatHeaderActions').style.display = isRizmac ? 'none' : '';
+  document.getElementById('rizmacHeaderBtns').style.display = isRizmac ? '' : 'none';
+  document.getElementById('najmatHeaderBtns').style.display = isRizmac ? 'none' : '';
   document.getElementById('tabBtnRizmac').classList.toggle('active', isRizmac);
   document.getElementById('tabBtnNajmat').classList.toggle('active', !isRizmac);
   document.getElementById('header-logo').src = isRizmac ? LOGO_BADGE_SRC : NAJMAT_LOGO_SRC;
   document.getElementById('header-logo').alt = isRizmac ? 'Rizmac' : 'Najmat';
-  document.getElementById('pageTitle').textContent = isRizmac ? 'Sales Management System — Rizmac Apparels' : 'Sales Management System — Najmat AlMashriq';
+  document.getElementById('pageTitle').textContent = 'Sales Management System';
   document.getElementById('pageSubtitle').textContent = isRizmac ? 'Your uniform & workwear prospect list, all in one calm view · connection tracking · follow-ups · reminders' : 'Contract & OEM manufacturing leads · pipeline tracking · meetings · follow-ups (no LinkedIn automation)';
   localStorage.setItem(LS_ACTIVE_TAB, isRizmac ? 'rizmac' : 'najmat');
   if(!isRizmac && !najmatLoaded){ loadNajmatData(); }
