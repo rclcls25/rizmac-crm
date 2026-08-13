@@ -1003,6 +1003,37 @@ let DRIVE_STORE = null; // { rizmacContacts:{}, rizmacTasks:{}, najmatContacts:{
 let driveSaveTimer = null;
 const DRIVE_COLLECTIONS = ['rizmacContacts','rizmacTasks','najmatContacts','najmatTasks'];
 function driveHeaders(extra){ return Object.assign({ 'Authorization': 'Bearer ' + DRIVE_TOKEN }, extra||{}); }
+// Gap #5 follow-up — Mohammad found himself clicking "Sign in with Google" on
+// every visit. Root cause (confirmed live via console): Google's silent
+// re-auth (prompt:'none') still opens a hidden popup window under the hood,
+// and Chrome blocks ANY popup that wasn't triggered by a direct user click —
+// so a silent attempt fired automatically from boot() is always blocked and
+// always falls back to the visible sign-in screen anyway. True zero-click
+// re-auth isn't possible for a static site like this (that needs a real
+// backend + refresh token, which this dashboard intentionally doesn't have,
+// so Mohammad's own Drive stays the only thing holding his data).
+// What we CAN do: an access token is valid for about an hour — we just
+// weren't holding onto it across page reloads before. Now we cache it (with
+// its real expiry) in localStorage, so re-opening the dashboard within that
+// window skips sign-in entirely. Only once the cached token actually expires
+// does he see the one-click sign-in screen again.
+const LS_DRIVE_TOKEN = 'rizmac_crm_drive_token';
+const LS_DRIVE_FILE_ID = 'rizmac_crm_drive_file_id';
+function saveDriveTokenCache(token, expiresInSec){
+  try{
+    localStorage.setItem(LS_DRIVE_TOKEN, JSON.stringify({ token: token, expiresAt: Date.now() + ((expiresInSec||3300)*1000) }));
+  }catch(e){}
+}
+function loadDriveTokenCache(){
+  try{
+    const raw = localStorage.getItem(LS_DRIVE_TOKEN);
+    if(!raw) return null;
+    const data = JSON.parse(raw);
+    // 2-minute safety buffer so we never hand back a token that's about to expire mid-use
+    if(data && data.token && data.expiresAt && data.expiresAt - Date.now() > 120000) return data.token;
+  }catch(e){}
+  return null;
+}
 function driveSignIn(){
   return new Promise((resolve, reject)=>{
     if(!driveTokenClient){
@@ -1011,52 +1042,25 @@ function driveSignIn(){
     driveTokenClient.callback = (resp)=>{
       if(resp.error){ reject(new Error(resp.error)); return; }
       DRIVE_TOKEN = resp.access_token;
+      saveDriveTokenCache(resp.access_token, resp.expires_in);
       resolve();
     };
     driveTokenClient.requestAccessToken({ prompt: DRIVE_TOKEN ? '' : 'consent' });
   });
 }
-// Gap #5 follow-up — avoid making Mohammad click "Sign in with Google" on every
-// visit. If his browser still has an active Google session and he previously
-// granted consent, Google Identity Services can hand back a fresh access token
-// with no popup at all (prompt:'none'). We wait (briefly, politely) for the GIS
-// script to finish loading first since it's async/defer and may not be ready
-// the instant boot() runs.
-function waitForGis(timeoutMs){
-  return new Promise((resolve, reject)=>{
-    const start = Date.now();
-    (function poll(){
-      if(window.google && google.accounts && google.accounts.oauth2){ resolve(); return; }
-      if(Date.now() - start > (timeoutMs||4000)){ reject(new Error('Google sign-in library did not load')); return; }
-      setTimeout(poll, 100);
-    })();
-  });
-}
-function attemptSilentDriveSignIn(){
-  return waitForGis().then(()=> new Promise((resolve, reject)=>{
-    if(!driveTokenClient){
-      driveTokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: DRIVE_SCOPE, callback: ()=>{} });
-    }
-    let settled = false;
-    driveTokenClient.callback = (resp)=>{
-      if(settled) return; settled = true;
-      if(resp.error){ reject(new Error(resp.error)); return; }
-      DRIVE_TOKEN = resp.access_token;
-      resolve();
-    };
-    // Safety timeout — if Google never calls back (can happen if no session
-    // exists at all), don't hang the boot screen forever.
-    setTimeout(()=>{ if(!settled){ settled = true; reject(new Error('silent sign-in timed out')); } }, 6000);
-    driveTokenClient.requestAccessToken({ prompt: 'none' });
-  }));
-}
 function driveEmptyStore(){ return { rizmacContacts:{}, rizmacTasks:{}, najmatContacts:{}, najmatTasks:{} }; }
 function driveFindOrCreateFile(){
+  const cachedFileId = localStorage.getItem(LS_DRIVE_FILE_ID);
+  if(cachedFileId){ DRIVE_FILE_ID = cachedFileId; return driveDownloadFile(); }
   const q = encodeURIComponent("name='"+DRIVE_FILE_NAME+"' and trashed=false");
   return fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,name)', { headers: driveHeaders() })
     .then(r=>r.json())
     .then(data=>{
-      if(data.files && data.files.length){ DRIVE_FILE_ID = data.files[0].id; return driveDownloadFile(); }
+      if(data.files && data.files.length){
+        DRIVE_FILE_ID = data.files[0].id;
+        try{ localStorage.setItem(LS_DRIVE_FILE_ID, DRIVE_FILE_ID); }catch(e){}
+        return driveDownloadFile();
+      }
       return driveCreateFile(driveEmptyStore());
     });
 }
@@ -1067,7 +1071,7 @@ function driveCreateFile(obj){
     '\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(obj)+'\r\n--'+boundary+'--';
   return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
     method:'POST', headers: driveHeaders({ 'Content-Type': 'multipart/related; boundary='+boundary }), body
-  }).then(r=>r.json()).then(data=>{ DRIVE_FILE_ID = data.id; DRIVE_STORE = obj; return obj; });
+  }).then(r=>r.json()).then(data=>{ DRIVE_FILE_ID = data.id; try{ localStorage.setItem(LS_DRIVE_FILE_ID, DRIVE_FILE_ID); }catch(e){} DRIVE_STORE = obj; return obj; });
 }
 function driveDownloadFile(){
   return fetch('https://www.googleapis.com/drive/v3/files/'+DRIVE_FILE_ID+'?alt=media', { headers: driveHeaders() })
@@ -1445,20 +1449,29 @@ function handleMoveToDrive(){
 function boot(){
   if(DATA_BACKEND==='drive'){
     document.getElementById('setup-screen').style.display = 'none';
-    document.getElementById('drive-signin-screen').style.display = 'none';
-    document.getElementById('boot').style.display = 'flex';
-    attemptSilentDriveSignIn().then(driveFindOrCreateFile).then(()=>{
-      return loadDataFromAirtable();
-    }).then(()=>{
-      document.getElementById('boot').style.display = 'none';
-      initBackupFolder();
-    }).catch(()=>{
-      // No active Google session (or consent was revoked) — fall back to the
-      // normal, visible one-click sign-in screen. This is the only case where
-      // Mohammad still has to click anything.
-      document.getElementById('boot').style.display = 'none';
-      document.getElementById('drive-signin-screen').style.display = 'flex';
-    });
+    const cachedToken = loadDriveTokenCache();
+    if(cachedToken){
+      // Still-valid token from an earlier sign-in this hour — skip the
+      // sign-in screen entirely and load straight in.
+      DRIVE_TOKEN = cachedToken;
+      document.getElementById('drive-signin-screen').style.display = 'none';
+      document.getElementById('boot').style.display = 'flex';
+      driveFindOrCreateFile().then(()=>{
+        return loadDataFromAirtable();
+      }).then(()=>{
+        document.getElementById('boot').style.display = 'none';
+        initBackupFolder();
+      }).catch(()=>{
+        // Cached token turned out to be no good (e.g. revoked) — clear it and
+        // fall back to the visible sign-in screen.
+        try{ localStorage.removeItem(LS_DRIVE_TOKEN); }catch(e){}
+        document.getElementById('boot').style.display = 'none';
+        document.getElementById('drive-signin-screen').style.display = 'flex';
+      });
+      return;
+    }
+    document.getElementById('boot').style.display = 'none';
+    document.getElementById('drive-signin-screen').style.display = 'flex';
     return;
   }
   document.getElementById('boot').style.display = 'flex';
