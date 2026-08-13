@@ -75,6 +75,7 @@
   .header-btn-grid .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;border-color:transparent;grid-column:span 3;}
   .header-btn-grid .btn-primary:hover{background:#d8ae5c;}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
+  @media (max-width:760px){ .wrap{padding:14px 12px 40px;} }
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;margin-bottom:18px;}
   .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-sm);transition:box-shadow .18s ease, transform .18s ease;}
   .card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
@@ -265,9 +266,20 @@
   .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:16px;font-size:13px;}
   .pager button{background:#fff;border:1px solid var(--border);padding:7px 13px;border-radius:8px;cursor:pointer;}
   .pager button:disabled{opacity:.4;cursor:default;}
-  .overlay{position:fixed;inset:0;background:rgba(20,26,40,.5);display:none;align-items:center;justify-content:center;z-index:50;}
+  /* overflow-y:auto + align-items:flex-start (instead of center) so that if
+     the modal is taller than the visible screen — very common on a phone,
+     especially once the on-screen keyboard eats vertical space — the whole
+     overlay scrolls to reveal the rest of it, instead of being vertically
+     centered and having its top/bottom silently clipped with no way to
+     reach them. This was the "screen is cutting" issue on mobile. */
+  .overlay{position:fixed;inset:0;background:rgba(20,26,40,.5);display:none;align-items:center;justify-content:center;z-index:50;overflow-y:auto;padding:24px 0;}
   .overlay.show{display:flex;}
-  .modal{position:relative;background:#fff;border-radius:16px;width:1500px;max-width:96vw;max-height:94vh;overflow:auto;padding:22px 26px 24px;box-shadow:0 20px 50px rgba(27,42,74,.25);}
+  .modal{position:relative;background:#fff;border-radius:16px;width:1500px;max-width:96vw;max-height:none;overflow:visible;padding:22px 26px 24px;box-shadow:0 20px 50px rgba(27,42,74,.25);margin:auto;}
+  @media (max-width:760px){
+    .overlay{align-items:flex-start;padding:12px 0 40px;}
+    .modal{max-width:94vw;padding:18px 14px 20px;border-radius:12px;}
+    .modal-close-btn{top:10px;right:10px;}
+  }
   .modal-close-btn{
     position:absolute;top:16px;right:18px;
     width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:#fff;
@@ -316,7 +328,6 @@
     background:#fbeeed;border:1px solid #edc4c1;color:#93362f;border-radius:var(--radius);padding:13px 16px;margin-bottom:16px;font-size:13.5px;box-shadow:var(--shadow-sm);}
   .action-banner.zero{background:var(--sage-light);border-color:#c8e0d3;color:#2f5c45;}
   .action-banner b{font-weight:700;}
-  .topline{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;}
   .btn-primary{background:var(--gold);color:#3a2a06;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.18);}
   .btn-primary:hover{background:#d8ae5c;box-shadow:0 3px 10px rgba(0,0,0,.22);}
   /* Rizmac/Najmat switcher sits directly under the title, in its own dark
@@ -338,8 +349,13 @@
   .backend-badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:4px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
   .backend-badge.drive{background:#e6f0ff;color:#1a56c4;border:1px solid #b8d1fb;}
   .backend-badge.airtable{background:#fdf0d5;color:#8a5a00;border:1px solid #f0d9a8;}
-  .table-wrap{max-height:640px;overflow-y:auto;border-radius:var(--radius);box-shadow:var(--shadow-md);border:1px solid var(--border);}
+  /* overflow-x:auto so a many-column table scrolls sideways inside its own box
+     on a narrow phone screen, instead of either squeezing every column
+     illegibly or breaking out and forcing the whole page to scroll sideways. */
+  .table-wrap{max-height:640px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    border-radius:var(--radius);box-shadow:var(--shadow-md);border:1px solid var(--border);}
   .table-wrap table{box-shadow:none;border:none;border-radius:0;}
+  @media (max-width:760px){ .table-wrap table{min-width:900px;} }
   .li-btn{display:inline-flex;align-items:center;gap:5px;background:#0A66C2;color:#fff;text-decoration:none;
     padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:700;letter-spacing:.2px;white-space:nowrap;}
   .li-btn:hover{background:#0958a8;}
