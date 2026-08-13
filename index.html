@@ -1307,16 +1307,31 @@ function driveDownloadFile(){
     .then(r=>r.json())
     .then(data=>{ DRIVE_STORE = Object.assign(driveEmptyStore(), data); return DRIVE_STORE; });
 }
+// IMPORTANT: every caller within the same 400ms debounce window must share
+// ONE promise. The old version gave each call its own promise but a single
+// shared timer — so when a later call's clearTimeout() cancelled an earlier
+// call's pending timer, that earlier call's promise was orphaned and never
+// resolved or rejected. It just hung forever. That was invisible for a single
+// edit (nothing else was racing it), but a batch operation like moving many
+// contacts at once fires many saves in a tight burst: only the very last one
+// survived and actually reached Google Drive, while everything before it sat
+// stuck, meaning most of the real changes were silently never persisted even
+// though the app's own on-screen view (which reads local memory, not a fresh
+// fetch) looked completely correct until the app was closed and reopened.
+let driveSavePromise = null;
 function driveSaveFile(){
   clearTimeout(driveSaveTimer);
-  return new Promise((resolve,reject)=>{
+  if(driveSavePromise) return driveSavePromise;
+  driveSavePromise = new Promise((resolve,reject)=>{
     driveSaveTimer = setTimeout(()=>{
       fetch('https://www.googleapis.com/upload/drive/v3/files/'+DRIVE_FILE_ID+'?uploadType=media', {
         method:'PATCH', headers: driveHeaders({'Content-Type':'application/json'}), body: JSON.stringify(DRIVE_STORE)
       }).then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error((e.error && e.error.message) || ('HTTP '+r.status)); }); return r.json(); })
-        .then(resolve).catch(reject);
+        .then(res=>{ driveSavePromise=null; resolve(res); })
+        .catch(err=>{ driveSavePromise=null; reject(err); });
     }, 400);
   });
+  return driveSavePromise;
 }
 function driveGenId(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function driveListRecords(collection){
