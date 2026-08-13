@@ -1097,27 +1097,54 @@ const RZ_STATUS_TO_NAJMAT_STAGE = {
   'Quoted':'Quoted','Ordered':'Order Placed','Not Interested':'Not Interested / Lost',
   'Connected':'Contacted','Blocked':'Not Interested / Lost'
 };
+// A real in-page list instead of a native prompt()/alert() dialog — those are
+// OS-drawn on a phone and were very likely getting visually cut off / not
+// scrolling properly inside the installed app, which is why it looked "stuck
+// at 20" even though nothing in the code actually limits the count. This
+// list is generated fresh from DATA every time it's opened, so any new
+// segment you add later shows up automatically — nothing to update by hand.
 function moveRizmacSegmentToNajmat(){
-  // Free-text search across segment, company, title AND name (not just an exact
-  // segment-name list) — the numbered segment list turned out not to be reliable
-  // enough on its own: a batch of leads can land with the segment field blank,
-  // spelled slightly differently, or the "category" really living in the company
-  // name instead, and a fixed list has no way to surface those. Searching text
-  // finds them regardless of which field it's actually sitting in.
-  const term = prompt('Type a word to search for (matches segment, company, title, or name — e.g. "CMT" or "Factory"). This searches your active Rizmac contacts.');
-  if(term===null) return;
-  const q = term.trim().toLowerCase();
-  if(!q){ alert('Type something to search for — nothing was moved.'); return; }
-  const matches = DATA.filter(r=>!r.deleted && [r.segment,r.company,r.title,r.name].join(' ').toLowerCase().includes(q));
-  if(!matches.length){
-    alert('No active Rizmac contacts matched "'+term+'" in their segment, company, title, or name.\n\nDouble-check the spelling, or try a shorter/simpler word (e.g. just "CMT" instead of the full category name).');
-    return;
-  }
-  const preview = matches.slice(0,25).map(r=>'• '+(r.name||'(no name)')+' — '+(r.company||'—')+' ['+(r.segment||'no segment set')+']').join('\n')
+  const segments = [...new Set(DATA.filter(r=>!r.deleted).map(r=>r.segment).filter(Boolean))].sort();
+  const noSegmentCount = DATA.filter(r=>!r.deleted && !r.segment).length;
+  modalReturnTo = null;
+  const rowsHtml = segments.map(s=>{
+    const n = DATA.filter(r=>!r.deleted && r.segment===s).length;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="movesegChk" value="${esc(s)}" style="width:16px;height:16px;flex:none;">
+      <span style="flex:1;">${esc(s)}</span><span class="muted">${n}</span>
+    </label>`;
+  }).join('') + (noSegmentCount ? `<label style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="movesegChk" value="" style="width:16px;height:16px;flex:none;">
+      <span style="flex:1;font-style:italic;color:#8a8f9c;">(No category set)</span><span class="muted">${noSegmentCount}</span>
+    </label>` : '');
+  document.getElementById('modalBody').innerHTML = `
+    <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
+    <h2>Move a category to Najmat</h2>
+    <div class="sub">Tick every category that actually belongs under Najmat, not Rizmac — you can select more than one at a time. This list is built live from your current contacts, so it always shows everything (${segments.length}${noSegmentCount?'+1':''} categor${segments.length===1?'y':'ies'}), nothing is hidden or cut off.</div>
+    <div style="max-height:50vh;overflow-y:auto;margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:4px 8px;">
+      ${rowsHtml || '<p class="muted" style="padding:10px;">No categories found on your active Rizmac contacts.</p>'}
+    </div>
+    <div class="modal-actions">
+      <div></div>
+      <div><button class="btn" onclick="closeModal()">Cancel</button> <button class="btn btn-primary" onclick="confirmMoveSelectedSegments()">Move selected to Najmat</button></div>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
+}
+function confirmMoveSelectedSegments(){
+  const checked = [...document.querySelectorAll('.movesegChk:checked')].map(el=>el.value);
+  if(!checked.length){ alert('Tick at least one category first — nothing was selected.'); return; }
+  const matches = DATA.filter(r=>!r.deleted && checked.includes(r.segment||''));
+  if(!matches.length){ alert('No active contacts in the categories you picked — nothing to move.'); return; }
+  const label = checked.map(c=>c||'(No category set)').join(', ');
+  const preview = matches.slice(0,25).map(r=>'• '+(r.name||'(no name)')+' — '+(r.company||'—')).join('\n')
     + (matches.length>25 ? '\n…and '+(matches.length-25)+' more' : '');
-  if(!confirm('Found '+matches.length+' contact'+(matches.length===1?'':'s')+' matching "'+term+'":\n\n'+preview+'\n\nMove ALL of these from Rizmac over to Najmat as manufacturing leads?\n\nThey will be fully removed from Rizmac (not archived) and added fresh under Najmat, with their notes, priority, and meeting details carried over. This cannot be undone automatically.')) return;
-  const segment = term;
-
+  if(!confirm('Move '+matches.length+' contact'+(matches.length===1?'':'s')+' from ['+label+'] over to Najmat as manufacturing leads?\n\n'+preview+'\n\nThey will be fully removed from Rizmac (not archived) and added fresh under Najmat, with their notes, priority, and meeting details carried over. This cannot be undone automatically.')) return;
+  closeModal();
+  moveContactsToNajmat(matches, label);
+}
+function moveContactsToNajmat(matches, segment){
   syncStatus('busy', 'Moving '+matches.length+' to Najmat…');
   let done = 0, failed = 0;
   const jobs = matches.map(r=>{
