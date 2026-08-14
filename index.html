@@ -299,7 +299,7 @@
   /* Sections lay out as a responsive grid of boxed cards instead of one long stacked
      column, so as much of the record as possible is visible without scrolling — each
      card is visually its own "section", per Mohammad's request. */
-  .modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;}
+  .modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;align-items:start;}
   .modal-grid .modal-section.span2{grid-column:span 2;}
   .modal-grid .modal-section.span3{grid-column:1 / -1;}
   @media (max-width:1100px){ .modal-grid{grid-template-columns:repeat(2,1fr);} .modal-grid .modal-section.span2{grid-column:span 2;} }
@@ -310,7 +310,24 @@
      accent bar — same visual language already used for the colored Views &
      Tools groups — cycling through 6 colors so no two neighboring sections
      look alike, however many sections a given lead's window has. */
-  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:12px;padding:13px 15px;margin:0;}
+  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:12px;padding:11px 14px;margin:0;}
+  /* Native <details>/<summary> used for the Meeting and Notes & History
+     sections — a real collapse/expand, no extra JS needed, and it keeps the
+     exact same section look (colored card, header row) whether open or
+     closed. A small ▸/▾ arrow shows which state it's in. */
+  details.modal-section{padding:11px 14px;}
+  details.modal-section summary{list-style:none;cursor:pointer;}
+  details.modal-section summary::-webkit-details-marker{display:none;}
+  details.modal-section summary .modal-section-head{margin-bottom:0;}
+  details.modal-section[open] summary .modal-section-head{margin-bottom:8px;}
+  details.modal-section summary .modal-section-head::after{content:'▸';margin-left:auto;color:#9aa8a0;font-size:10px;}
+  details.modal-section[open] summary .modal-section-head::after{content:'▾';}
+  details.sub-collapse{border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-top:10px;background:rgba(255,255,255,.5);}
+  details.sub-collapse summary{list-style:none;cursor:pointer;font-size:12px;font-weight:600;color:#4b5568;}
+  details.sub-collapse summary::-webkit-details-marker{display:none;}
+  details.sub-collapse summary::after{content:' ▸';color:#9aa8a0;}
+  details.sub-collapse[open] summary::after{content:' ▾';}
+  details.sub-collapse[open] summary{margin-bottom:6px;}
   .modal-grid .modal-section:nth-child(6n+1){background:#eaf3ee;border-color:#cfe2d7;border-left-color:#5c9a7c;}
   .modal-grid .modal-section:nth-child(6n+2){background:#eaf0fa;border-color:#cddaf0;border-left-color:#5c7fc4;}
   .modal-grid .modal-section:nth-child(6n+3){background:#faf1e2;border-color:#f0ddb8;border-left-color:#c98f2e;}
@@ -324,7 +341,8 @@
   .checkbox-row input[type=checkbox]{width:auto;}
   .modal h2{margin:0 0 2px;font-size:17px;}
   .modal .sub{color:var(--gray);font-size:12.5px;margin-bottom:14px;}
-  .modal label{display:block;font-size:12px;font-weight:600;color:#4b5568;margin:10px 0 4px;}
+  .modal label{display:block;font-size:12px;font-weight:600;color:#4b5568;margin:7px 0 3px;}
+  .modal-section-head + label{margin-top:0;}
   .modal input, .modal select, .modal textarea{width:100%;padding:9px 11px;border:1px solid var(--border);
     border-radius:9px;font-size:13px;font-family:inherit;}
   .modal input:focus, .modal select:focus, .modal textarea:focus{outline:2px solid var(--sage-light);border-color:var(--sage);}
@@ -1021,24 +1039,26 @@ function renderMessagesBlock(r){
   const connectLen = msgs.connect.length;
   const overLimit = connectLen > 300;
   return `
-    <label style="margin-top:14px;">Ready-to-send messages <span class="msg-char">(personalized automatically — just copy and paste)</span></label>
-    <div class="msg-box">
-      <div class="msg-row">
-        <div class="msg-lbl">Connection note <span class="${overLimit?'msg-charwarn':'msg-char'}">(${connectLen}/300 characters${overLimit?' — over LinkedIn’s limit, trim before sending':''})</span></div>
-        <textarea id="msg_connect" readonly class="msg-textarea">${esc(msgs.connect)}</textarea>
-        <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_connect').value)">Copy connection note</button>
+    <details class="sub-collapse" style="margin-top:10px;">
+      <summary>Ready-to-send messages <span class="msg-char">(personalized automatically — just copy and paste)</span></summary>
+      <div class="msg-box">
+        <div class="msg-row">
+          <div class="msg-lbl">Connection note <span class="${overLimit?'msg-charwarn':'msg-char'}">(${connectLen}/300 characters${overLimit?' — over LinkedIn’s limit, trim before sending':''})</span></div>
+          <textarea id="msg_connect" readonly class="msg-textarea">${esc(msgs.connect)}</textarea>
+          <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_connect').value)">Copy connection note</button>
+        </div>
+        <div class="msg-row">
+          <div class="msg-lbl">Follow-up 1 <span class="msg-char">(send within 1 day of them accepting)</span></div>
+          <textarea id="msg_fu1" readonly class="msg-textarea">${esc(msgs.followup1)}</textarea>
+          <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_fu1').value)">Copy follow-up 1</button>
+        </div>
+        <div class="msg-row">
+          <div class="msg-lbl">Follow-up 2 <span class="msg-char">(only if no reply after 4–5 days)</span></div>
+          <textarea id="msg_fu2" readonly class="msg-textarea">${esc(msgs.followup2)}</textarea>
+          <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_fu2').value)">Copy follow-up 2</button>
+        </div>
       </div>
-      <div class="msg-row">
-        <div class="msg-lbl">Follow-up 1 <span class="msg-char">(send within 1 day of them accepting)</span></div>
-        <textarea id="msg_fu1" readonly class="msg-textarea">${esc(msgs.followup1)}</textarea>
-        <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_fu1').value)">Copy follow-up 1</button>
-      </div>
-      <div class="msg-row">
-        <div class="msg-lbl">Follow-up 2 <span class="msg-char">(only if no reply after 4–5 days)</span></div>
-        <textarea id="msg_fu2" readonly class="msg-textarea">${esc(msgs.followup2)}</textarea>
-        <button type="button" class="btn small ghost" onclick="copyMsg(this, document.getElementById('msg_fu2').value)">Copy follow-up 2</button>
-      </div>
-    </div>
+    </details>
   `;
 }
 function copyMsg(btn, text){
@@ -2560,8 +2580,8 @@ function openModal(id){
       </div>
     </div>
 
-    <div class="modal-section span3">
-      <div class="modal-section-head">📅 Meeting <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— independent of pipeline stage, can happen at any point</span></div>
+    <details class="modal-section span3" open>
+      <summary><div class="modal-section-head">📅 Meeting <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— independent of pipeline stage, can happen at any point</span></div></summary>
       <div class="row2">
         <div><label>Meeting status</label>
           <select id="m_meetingstatus">
@@ -2583,15 +2603,15 @@ function openModal(id){
       <textarea id="m_meetingprep" placeholder="Talking points, materials to bring, questions to ask...">${esc(r.meeting_prep_notes)}</textarea>
       <label style="margin-top:12px;">What happened / was decided <span class="msg-char">(fill in after the meeting)</span></label>
       <textarea id="m_meetingoutcome" placeholder="Outcome, next steps, decisions made...">${esc(r.meeting_outcome_notes)}</textarea>
-    </div>
+    </details>
 
-    <div class="modal-section span3">
-      <div class="modal-section-head">📝 Notes &amp; history</div>
+    <details class="modal-section span3" open>
+      <summary><div class="modal-section-head">📝 Notes &amp; history</div></summary>
       <label>Add a conversation note</label>
       <textarea id="m_note" placeholder="What was discussed, what's the next step..."></textarea>
       ${isNew ? '' : renderMessagesBlock(r)}
-      ${isNew ? '' : '<label style="margin-top:14px;">Conversation history</label><div class="log-scroll">'+logs+'</div>'}
-    </div>
+      ${isNew ? '' : '<details class="sub-collapse" open><summary>Conversation history ('+((r.conversation_log||[]).length)+')</summary><div class="log-scroll">'+logs+'</div></details>'}
+    </details>
     </div>
 
     <div class="modal-actions">
@@ -3608,8 +3628,8 @@ function openNajmatModal(rid){
       </div>
     </div>
 
-    <div class="modal-section">
-      <div class="modal-section-head">📅 Meeting <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— independent of pipeline stage</span></div>
+    <details class="modal-section" open>
+      <summary><div class="modal-section-head">📅 Meeting <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— independent of pipeline stage</span></div></summary>
       <div class="row2">
         <div><label>Meeting status</label>
           <select id="nm_meetingstatus">
@@ -3631,7 +3651,7 @@ function openNajmatModal(rid){
       <textarea id="nm_meetingprep" placeholder="Talking points, materials to bring, questions to ask...">${esc(r.meeting_prep_notes)}</textarea>
       <label style="margin-top:12px;">What happened / was decided <span class="msg-char">(fill in after the meeting)</span></label>
       <textarea id="nm_meetingoutcome" placeholder="Outcome, next steps, decisions made...">${esc(r.meeting_outcome_notes)}</textarea>
-    </div>
+    </details>
 
     <div class="modal-section">
       <div class="modal-section-head">🗓️ Follow-up</div>
