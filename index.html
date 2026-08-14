@@ -304,7 +304,19 @@
   .modal-grid .modal-section.span3{grid-column:1 / -1;}
   @media (max-width:1100px){ .modal-grid{grid-template-columns:repeat(2,1fr);} .modal-grid .modal-section.span2{grid-column:span 2;} }
   @media (max-width:720px){ .modal-grid{grid-template-columns:1fr;} .modal-grid .modal-section.span2, .modal-grid .modal-section.span3{grid-column:1;} }
-  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin:0;}
+  /* Every section used to be nearly the same near-white shade as the modal's
+     own background (#fbfcfa on white), so they all blurred together. Each
+     section now gets a distinct, clearly-readable tint plus a colored left
+     accent bar — same visual language already used for the colored Views &
+     Tools groups — cycling through 6 colors so no two neighboring sections
+     look alike, however many sections a given lead's window has. */
+  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:12px;padding:13px 15px;margin:0;}
+  .modal-grid .modal-section:nth-child(6n+1){background:#eaf3ee;border-color:#cfe2d7;border-left-color:#5c9a7c;}
+  .modal-grid .modal-section:nth-child(6n+2){background:#eaf0fa;border-color:#cddaf0;border-left-color:#5c7fc4;}
+  .modal-grid .modal-section:nth-child(6n+3){background:#faf1e2;border-color:#f0ddb8;border-left-color:#c98f2e;}
+  .modal-grid .modal-section:nth-child(6n+4){background:#f1eaf9;border-color:#ddccef;border-left-color:#8a5cc4;}
+  .modal-grid .modal-section:nth-child(6n+5){background:#fbeaea;border-color:#f0cccc;border-left-color:#c45c5c;}
+  .modal-grid .modal-section:nth-child(6n+6){background:#e6f4f6;border-color:#c3e2e6;border-left-color:#2f8a9a;}
   .modal-section-head{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--sage);margin-bottom:8px;}
   .log-scroll{max-height:200px;overflow-y:auto;padding-right:4px;}
   .checkbox-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;}
