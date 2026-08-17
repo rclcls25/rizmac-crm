@@ -1234,13 +1234,13 @@ const GOOGLE_CLIENT_ID = '136428099233-ebqv4hortg0c501etiv7ahao62lm0eda.apps.goo
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_FILE_NAME = 'rizmac_crm_data.json';
 const LS_BACKEND = 'rizmac_crm_backend';
-// Default to Google Drive on any device/browser that has no saved preference
-// yet (e.g. a phone opening this for the first time) — Airtable was only ever
-// meant as a fallback, but defaulting to it here made brand-new devices show
-// the old "enter your Personal Access Token" setup screen instead of the
-// Google sign-in screen, which is confusing since Mohammad no longer uses
-// Airtable at all.
-let DATA_BACKEND = localStorage.getItem(LS_BACKEND) || 'drive';
+// 2026-08-17: Google Drive backend removed per Mohammad's request — he found
+// the recurring Google sign-in step disruptive and wants Airtable as the one
+// and only place his CRM data lives, on every device, with no exceptions.
+// Hard-locked to 'airtable' regardless of any backend value saved earlier in
+// this browser's local storage, so a stale 'drive' preference can never bring
+// the Google sign-in screen back.
+let DATA_BACKEND = 'airtable';
 // Visible, always-on indicator so Mohammad can tell at a glance whether this
 // session is reading/writing his own Google Drive file or the Airtable base —
 // the two backends look identical otherwise, which was confusing.
@@ -1676,7 +1676,11 @@ document.getElementById('btn-connect').addEventListener('click', function(){
 document.getElementById('btn-settings').addEventListener('click', function(){
   if(DATA_BACKEND==='drive'){
     if(confirm('Switch this dashboard back to Airtable and sign out of Google Drive? Your Drive file is left untouched — you can move it back to Drive again anytime.')){
-      localStorage.removeItem(LS_BACKEND);
+      // Fix (2026-08-17): this used to just removeItem(LS_BACKEND), but DATA_BACKEND
+      // defaults to 'drive' whenever there's no saved preference at all, so clearing
+      // the key silently sent the dashboard right back into Drive mode instead of
+      // Airtable. Set it explicitly to 'airtable' so the switch actually sticks.
+      localStorage.setItem(LS_BACKEND, 'airtable');
       location.reload();
     }
     return;
@@ -1762,8 +1766,8 @@ function boot(){
     document.getElementById('boot').style.display = 'none';
     recoverLegacyLocalData();
     initBackupFolder();
-    const moveBtn = document.getElementById('btn-move-to-drive');
-    if(moveBtn) moveBtn.style.display = '';
+    // "Move to Drive" intentionally stays hidden — Google Drive backend was
+    // removed 2026-08-17; Airtable is the only supported backend now.
   });
 }
 
