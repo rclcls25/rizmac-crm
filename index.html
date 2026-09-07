@@ -52,8 +52,8 @@
   /* Same round-framed badge treatment for whichever logo is currently shown,
      so Rizmac and Najmat look visually consistent regardless of the source
      image file's own styling. */
-  .header-logo-center{justify-self:center;align-self:center;background:#fff;border:2px solid var(--gold);
-    border-radius:14px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+  .header-logo-center{justify-self:center;align-self:center;background:transparent;border:none;
+    border-radius:0;padding:0;box-shadow:none;}
   /* Fixed min-height (matching Rizmac's taller 3-row button set) so the
      header does NOT change size when switching to Najmat's shorter 2-row
      set — a shrinking header was pushing the bottom-left status readout up
@@ -86,12 +86,13 @@
   .header-btn-grid .btn-primary:hover{background:var(--navy2);}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
   @media (max-width:760px){ .wrap{padding:14px 12px 40px;} }
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;margin-bottom:18px;}
-  .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-sm);transition:box-shadow .18s ease, transform .18s ease;}
-  .card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--border);
+    border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+  .card{background:#fff;border:none;border-radius:0;padding:16px 18px;box-shadow:none;transition:background .15s ease;}
+  .card:hover{background:var(--sage-light);box-shadow:none;transform:none;}
   .card .icon{font-size:13px;margin-bottom:4px;opacity:.9;}
-  .card .num{font-size:22px;font-weight:800;color:var(--navy);line-height:1.15;letter-spacing:-.2px;}
-  .card .lbl{font-size:10.5px;font-weight:600;color:var(--gray);margin-top:3px;line-height:1.25;text-transform:uppercase;letter-spacing:.3px;}
+  .card .num{font-size:24px;font-weight:700;color:var(--navy);line-height:1.15;letter-spacing:normal;font-family:'Manrope',sans-serif;}
+  .card .lbl{font-size:10.5px;font-weight:600;color:var(--gray);margin-top:5px;line-height:1.25;text-transform:uppercase;letter-spacing:.3px;}
   .card.warn .num{color:var(--red);}
   .card.soon .num{color:var(--amber);}
   .card.good .num{color:var(--sage);}
@@ -170,7 +171,9 @@
   .toolbar input, .toolbar select{padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:#fdfbf5;color:#241f18;font-family:'Manrope',sans-serif;transition:border-color .12s ease;}
   .toolbar input:focus, .toolbar select:focus{outline:2px solid var(--sage-light);border-color:var(--sage);}
   .toolbar input[type=text]{flex:1;min-width:180px;}
+  button{font-family:'Manrope',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
   .btn{background:var(--navy);color:#fff;border:none;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;
+    font-family:'Manrope',sans-serif;
     transition:background .15s ease, transform .1s ease, box-shadow .15s ease;box-shadow:0 1px 2px rgba(27,42,74,.12);}
   .btn:hover{background:var(--navy2);box-shadow:var(--shadow-sm);transform:translateY(-1px);}
   .btn:active{transform:scale(.98);}
@@ -273,9 +276,17 @@
   .seg-UKEurope{background:#E6F0FA;color:#1B4F8C;}
   .company{font-weight:600;color:#1c2230;}
   .muted{color:#8a8f9c;font-size:12px;}
-  .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:16px;font-size:13px;}
-  .pager button{background:#fff;border:1px solid var(--border);padding:7px 13px;border-radius:8px;cursor:pointer;}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:18px;font-size:13px;
+    flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:9px 14px;box-shadow:var(--shadow-sm);}
+  .pager button{background:#fff;color:var(--navy);border:1px solid var(--border);padding:7px 13px;border-radius:8px;
+    cursor:pointer;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:600;transition:background .12s ease,color .12s ease;}
+  .pager button:hover:not(:disabled){background:var(--navy);color:#fff;border-color:var(--navy);}
   .pager button:disabled{opacity:.4;cursor:default;}
+  .pager #pageInfo, .pager #nmPageInfo{font-weight:700;color:var(--navy);padding:0 4px;}
+  .pager-size{display:flex;align-items:center;gap:6px;color:var(--gray);font-size:12.5px;font-weight:600;margin-left:auto;}
+  .pager-size select{font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:600;color:#241f18;
+    border:1px solid var(--border);border-radius:8px;padding:5px 8px;background:#fdfbf5;cursor:pointer;}
+  @media (max-width:760px){ .pager{justify-content:center;} .pager-size{margin-left:0;width:100%;justify-content:center;} }
   /* overflow-y:auto + align-items:flex-start (instead of center) so that if
      the modal is taller than the visible screen — very common on a phone,
      especially once the on-screen keyboard eats vertical space — the whole
@@ -417,9 +428,9 @@
   .setup-body a{color:#2b5fb0;text-decoration:none;font-weight:600;}
   .field-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray);margin:16px 0 5px;}
   .setup-error{margin-top:14px;background:#fbeeed;color:#93362f;border:1px solid #edc4c1;padding:10px 12px;border-radius:8px;font-size:12.5px;display:none;}
-  #boot{position:fixed;inset:0;background:linear-gradient(150deg,var(--navy),var(--navy2));display:none;align-items:center;justify-content:center;z-index:998;flex-direction:column;color:#fff;}
-  #boot img{width:100px;}
-  #boot .t{font-size:20px;margin-top:16px;}
+  #boot{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:998;flex-direction:column;color:#241f18;}
+  #boot img{width:72px;}
+  #boot .t{font-size:16px;margin-top:16px;font-family:'Fraunces',Georgia,serif;font-weight:600;color:var(--navy);}
   .spinner{width:30px;height:30px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:var(--gold);animation:spin .9s linear infinite;margin-top:22px;}
   @keyframes spin{to{transform:rotate(360deg);}}
 </style>
@@ -611,9 +622,20 @@
   </div>
 
   <div class="pager">
-    <button id="prevBtn" onclick="changePage(-1)">◀ Prev</button>
+    <button id="firstBtn" onclick="goToPage(1)" title="First page">« First</button>
+    <button id="prevBtn" onclick="changePage(-1)">‹ Prev</button>
     <span id="pageInfo"></span>
-    <button id="nextBtn" onclick="changePage(1)">Next ▶</button>
+    <button id="nextBtn" onclick="changePage(1)">Next ›</button>
+    <button id="lastBtn" onclick="goToPage(Infinity)" title="Last page">Last »</button>
+    <label class="pager-size">Show
+      <select id="pageSizeSelect" onchange="setPageSize(this.value)">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="250">250</option>
+      </select>
+      per page
+    </label>
   </div>
 
   <div class="footer-note" id="rizmacFooterNote">Rizmac CRM — live-synced. Changes save automatically in the background.</div>
@@ -695,9 +717,20 @@
   </div>
 
   <div class="pager">
-    <button id="nmPrevBtn" onclick="najmatChangePage(-1)">◀ Prev</button>
+    <button id="nmFirstBtn" onclick="najmatGoToPage(1)" title="First page">« First</button>
+    <button id="nmPrevBtn" onclick="najmatChangePage(-1)">‹ Prev</button>
     <span id="nmPageInfo"></span>
-    <button id="nmNextBtn" onclick="najmatChangePage(1)">Next ▶</button>
+    <button id="nmNextBtn" onclick="najmatChangePage(1)">Next ›</button>
+    <button id="nmLastBtn" onclick="najmatGoToPage(Infinity)" title="Last page">Last »</button>
+    <label class="pager-size">Show
+      <select id="nmPageSizeSelect" onchange="najmatSetPageSize(this.value)">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="250">250</option>
+      </select>
+      per page
+    </label>
   </div>
 
   <div class="footer-note" id="najmatFooterNote">Najmat AlMashriq — live-synced. Changes save automatically in the background.</div>
@@ -774,7 +807,13 @@ function applyDashboardTabState(){
   if(head) head.style.display = activeDashboardTab ? 'flex' : 'none';
   if(title) title.textContent = activeDashboardTab ? (DASH_TAB_TITLES[activeDashboardTab]||'') : '';
 }
-const PAGE_SIZE = 50;
+let PAGE_SIZE = 50;
+function setPageSize(v){ PAGE_SIZE = parseInt(v,10)||50; page = 1; renderRows(); }
+function goToPage(target){
+  const totalPages = Math.max(1, Math.ceil(filtered.length/PAGE_SIZE));
+  page = target===Infinity ? totalPages : Math.min(totalPages, Math.max(1, target));
+  renderRows();
+}
 
 const MASTER_SEGMENTS = ['Hotel & Hospitality','Corporate/Office','Construction/Industrial','Distributors/Promotional','Fashion & Menswear Buyers','Abaya & Modest-Wear Brands','Advertising Agencies','UK & Europe Hospitality Network','Personal Network - Reconnected','New Business Outreach','Old LinkedIn Network - GCC','DIP Uniform Buyer'];
 function allSegmentOptions(){
@@ -2043,6 +2082,8 @@ function renderRows(){
   document.getElementById('pageInfo').textContent = `Page ${page} of ${totalPages} · ${filtered.length} records`;
   document.getElementById('prevBtn').disabled = page<=1;
   document.getElementById('nextBtn').disabled = page>=totalPages;
+  document.getElementById('firstBtn').disabled = page<=1;
+  document.getElementById('lastBtn').disabled = page>=totalPages;
   renderCards();
 }
 function changePage(dir){
@@ -2807,7 +2848,13 @@ let NAJMAT_DATA = [];
 let najmatFiltered = [];
 let najmatLoaded = false;
 let najmatPage = 1;
-const NAJMAT_PAGE_SIZE = 50;
+let NAJMAT_PAGE_SIZE = 50;
+function najmatSetPageSize(v){ NAJMAT_PAGE_SIZE = parseInt(v,10)||50; najmatPage = 1; najmatRenderRows(); }
+function najmatGoToPage(target){
+  const totalPages = Math.max(1, Math.ceil(najmatFiltered.length/NAJMAT_PAGE_SIZE));
+  najmatPage = target===Infinity ? totalPages : Math.min(totalPages, Math.max(1, target));
+  najmatRenderRows();
+}
 let nmShowArchived=false, nmShowDeleted=false, nmShowFollowupDue=false, nmShowMeetingSoon=false;
 
 function najmatApiBase(){ return 'https://api.airtable.com/v0/' + NAJMAT_BASE + '/' + NAJMAT_TABLE; }
@@ -3223,6 +3270,8 @@ function najmatRenderRows(){
   document.getElementById('nmPageInfo').textContent = `Page ${najmatPage} of ${totalPages} (${najmatFiltered.length} leads)`;
   document.getElementById('nmPrevBtn').disabled = najmatPage<=1;
   document.getElementById('nmNextBtn').disabled = najmatPage>=totalPages;
+  document.getElementById('nmFirstBtn').disabled = najmatPage<=1;
+  document.getElementById('nmLastBtn').disabled = najmatPage>=totalPages;
 }
 function najmatChangePage(dir){
   const totalPages = Math.max(1, Math.ceil(najmatFiltered.length/NAJMAT_PAGE_SIZE));
