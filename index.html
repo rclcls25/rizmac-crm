@@ -15,7 +15,6 @@
 <meta name="theme-color" content="#1f3d33">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --navy:#1f3d33; --navy2:#2c5646; --gold:#c9a24b; --bg:#f4f6f5;
@@ -385,9 +384,6 @@
   .mini-dot.on{background:#3ecb7e;}
   .mini-dot.warn{background:var(--gold);}
   @keyframes pulse{50%{opacity:.35;}}
-  .backend-badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:4px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
-  .backend-badge.drive{background:#e6f0ff;color:#1a56c4;border:1px solid #b8d1fb;}
-  .backend-badge.airtable{background:#fdf0d5;color:#8a5a00;border:1px solid #f0d9a8;}
   /* overflow-x:auto so a many-column table scrolls sideways inside its own box
      on a narrow phone screen, instead of either squeezing every column
      illegibly or breaking out and forcing the whole page to scroll sideways. */
@@ -457,22 +453,6 @@
   </div>
 </div>
 
-<div id="drive-signin-screen" style="display:none;">
-  <div class="setup-card">
-    <div class="setup-head">
-      <img id="drive-setup-logo" src="" alt="Rizmac">
-      <h1>Sign in to Google Drive</h1>
-      <p>Your CRM data lives in your own Google Drive now — sign in to open it</p>
-    </div>
-    <div class="setup-body">
-      <div class="setup-step"><div class="step-num">1</div><div>Click the button below and choose the same Google account as your Drive subscription.</div></div>
-      <div class="setup-step"><div class="step-num">2</div><div>Google will ask you to approve access — this app can only see the one file it created for your CRM, nothing else in your Drive.</div></div>
-      <div class="setup-error" id="drive-setup-error"></div>
-      <button class="btn" style="width:100%;margin-top:20px;padding:12px;font-size:14px;" id="btn-drive-signin">Sign in with Google</button>
-    </div>
-  </div>
-</div>
-
 <header>
   <!-- Storage/sync status: a small separate readout tucked into the header's
        own bottom-left corner — detached from the title/tabs column entirely,
@@ -480,11 +460,9 @@
        header's real height always fits its tallest column (the button grid),
        so this can never get clipped the way it did before that fix. -->
   <div class="header-corner-status" id="rizmacHeaderActions">
-    <span class="backend-badge" id="storageBackendBadge" title="Where your CRM data is actually stored right now">…</span>
     <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
   </div>
   <div class="header-corner-status" id="najmatHeaderActions" style="display:none;">
-    <span class="backend-badge" id="storageBackendBadgeNajmat" title="Where your CRM data is actually stored right now">…</span>
     <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
   </div>
   <div class="topline">
@@ -507,7 +485,6 @@
       <button class="btn" onclick="showTodoView()">📋 To-Do (<span id="rzTodoCount">0</span>)</button>
       <button class="btn" id="btn-refresh" onclick="loadDataFromAirtable()">🔄 Refresh</button>
       <button class="btn" id="btn-settings" title="Disconnect / change token">⚙</button>
-      <button class="btn" id="btn-move-to-drive" style="display:none;" onclick="handleMoveToDrive()" title="Move this CRM to your own Google Drive instead of Airtable">☁ Move to Drive</button>
     </div>
     <div class="header-btn-grid" id="najmatHeaderBtns" style="display:none;">
       <button class="btn btn-primary" onclick="openNajmatModal(null)">+ Add new lead</button>
@@ -1090,7 +1067,6 @@ function syncStatus(mode, text){
   document.getElementById('sync-text').textContent = text;
 }
 function fetchAllAirtableRecords(){
-  if(DATA_BACKEND==='drive') return driveListRecords('rizmacContacts');
   let all = [];
   function page(offset){
     const url = apiBase() + '?pageSize=100&returnFieldsByFieldId=true' + (offset ? '&offset='+offset : '');
@@ -1101,17 +1077,14 @@ function fetchAllAirtableRecords(){
   return page(null);
 }
 function airtablePatch(rid, fields){
-  if(DATA_BACKEND==='drive') return drivePatchRecord('rizmacContacts', rid, fields);
   return fetch(apiBase(), { method:'PATCH', headers: authHeaders(), body: JSON.stringify({ typecast:true, records:[{id:rid, fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function airtableCreate(fields){
-  if(DATA_BACKEND==='drive') return driveCreateRecord('rizmacContacts', fields);
   return fetch(apiBase(), { method:'POST', headers: authHeaders(), body: JSON.stringify({ typecast:true, records:[{fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function airtableDelete(rid){
-  if(DATA_BACKEND==='drive') return driveDeleteRecord('rizmacContacts', rid);
   return fetch(apiBase() + '?records[]=' + encodeURIComponent(rid), { method:'DELETE', headers:{ 'Authorization':'Bearer '+AT_TOKEN } })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
@@ -1222,237 +1195,11 @@ function moveContactsToNajmat(matches, segment){
     alert('Something went wrong partway through: ' + err.message + '\n\nCheck both tabs before retrying — some contacts may have already moved.');
   });
 }
-// ============================================================================
-// Google Drive data backend (gap #5) — lets the whole CRM run without Airtable.
-// One JSON file, kept in Mohammad's own Google Drive inside a folder only this
-// app can see (drive.file scope), holds every table shaped exactly like an
-// Airtable {id, fields} record so nothing else in this file needs to change —
-// every airtable*/najmat*/rzTask*/nmTask* function above and below transparently
-// routes here whenever DATA_BACKEND === 'drive'.
-// ============================================================================
-const GOOGLE_CLIENT_ID = '136428099233-ebqv4hortg0c501etiv7ahao62lm0eda.apps.googleusercontent.com';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const DRIVE_FILE_NAME = 'rizmac_crm_data.json';
-const LS_BACKEND = 'rizmac_crm_backend';
-// 2026-08-17: Google Drive backend removed per Mohammad's request — he found
-// the recurring Google sign-in step disruptive and wants Airtable as the one
-// and only place his CRM data lives, on every device, with no exceptions.
-// Hard-locked to 'airtable' regardless of any backend value saved earlier in
-// this browser's local storage, so a stale 'drive' preference can never bring
-// the Google sign-in screen back.
-let DATA_BACKEND = 'airtable';
-// Visible, always-on indicator so Mohammad can tell at a glance whether this
-// session is reading/writing his own Google Drive file or the Airtable base —
-// the two backends look identical otherwise, which was confusing.
-function paintBackendBadge(){
-  const isDrive = DATA_BACKEND === 'drive';
-  const label = isDrive ? '☁ Google Drive' : '🗂 Airtable';
-  const cls = 'backend-badge ' + (isDrive ? 'drive' : 'airtable');
-  ['storageBackendBadge','storageBackendBadgeNajmat'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el){ el.textContent = label; el.className = cls; }
-  });
-  const noteSuffix = isDrive ? ' Stored in your own Google Drive.' : ' Stored in Airtable.';
-  const rzNote = document.getElementById('rizmacFooterNote');
-  const nmNote = document.getElementById('najmatFooterNote');
-  if(rzNote) rzNote.textContent = 'Rizmac CRM — live-synced.' + noteSuffix + ' Changes save automatically in the background.';
-  if(nmNote) nmNote.textContent = 'Najmat AlMashriq — live-synced.' + noteSuffix + ' Changes save automatically in the background.';
-}
-let driveTokenClient = null;
-let DRIVE_TOKEN = null;
-let DRIVE_FILE_ID = null;
-let DRIVE_STORE = null; // { rizmacContacts:{}, rizmacTasks:{}, najmatContacts:{}, najmatTasks:{} }
-let driveSaveTimer = null;
-const DRIVE_COLLECTIONS = ['rizmacContacts','rizmacTasks','najmatContacts','najmatTasks'];
-function driveHeaders(extra){ return Object.assign({ 'Authorization': 'Bearer ' + DRIVE_TOKEN }, extra||{}); }
-// Gap #5 follow-up — Mohammad found himself clicking "Sign in with Google" on
-// every visit. Root cause (confirmed live via console): Google's silent
-// re-auth (prompt:'none') still opens a hidden popup window under the hood,
-// and Chrome blocks ANY popup that wasn't triggered by a direct user click —
-// so a silent attempt fired automatically from boot() is always blocked and
-// always falls back to the visible sign-in screen anyway. True zero-click
-// re-auth isn't possible for a static site like this (that needs a real
-// backend + refresh token, which this dashboard intentionally doesn't have,
-// so Mohammad's own Drive stays the only thing holding his data).
-// What we CAN do: an access token is valid for about an hour — we just
-// weren't holding onto it across page reloads before. Now we cache it (with
-// its real expiry) in localStorage, so re-opening the dashboard within that
-// window skips sign-in entirely. Only once the cached token actually expires
-// does he see the one-click sign-in screen again.
-const LS_DRIVE_TOKEN = 'rizmac_crm_drive_token';
-const LS_DRIVE_FILE_ID = 'rizmac_crm_drive_file_id';
-function saveDriveTokenCache(token, expiresInSec){
-  try{
-    localStorage.setItem(LS_DRIVE_TOKEN, JSON.stringify({ token: token, expiresAt: Date.now() + ((expiresInSec||3300)*1000) }));
-  }catch(e){}
-}
-function loadDriveTokenCache(){
-  try{
-    const raw = localStorage.getItem(LS_DRIVE_TOKEN);
-    if(!raw) return null;
-    const data = JSON.parse(raw);
-    // 2-minute safety buffer so we never hand back a token that's about to expire mid-use
-    if(data && data.token && data.expiresAt && data.expiresAt - Date.now() > 120000) return data.token;
-  }catch(e){}
-  return null;
-}
-function driveSignIn(){
-  return new Promise((resolve, reject)=>{
-    if(!driveTokenClient){
-      driveTokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: DRIVE_SCOPE, callback: ()=>{} });
-    }
-    driveTokenClient.callback = (resp)=>{
-      if(resp.error){ reject(new Error(resp.error)); return; }
-      DRIVE_TOKEN = resp.access_token;
-      saveDriveTokenCache(resp.access_token, resp.expires_in);
-      resolve();
-    };
-    driveTokenClient.requestAccessToken({ prompt: DRIVE_TOKEN ? '' : 'consent' });
-  });
-}
-function driveEmptyStore(){ return { rizmacContacts:{}, rizmacTasks:{}, najmatContacts:{}, najmatTasks:{} }; }
-function driveFindOrCreateFile(){
-  const cachedFileId = localStorage.getItem(LS_DRIVE_FILE_ID);
-  if(cachedFileId){ DRIVE_FILE_ID = cachedFileId; return driveDownloadFile(); }
-  const q = encodeURIComponent("name='"+DRIVE_FILE_NAME+"' and trashed=false");
-  return fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,name)', { headers: driveHeaders() })
-    .then(r=>r.json())
-    .then(data=>{
-      if(data.files && data.files.length){
-        DRIVE_FILE_ID = data.files[0].id;
-        try{ localStorage.setItem(LS_DRIVE_FILE_ID, DRIVE_FILE_ID); }catch(e){}
-        return driveDownloadFile();
-      }
-      return driveCreateFile(driveEmptyStore());
-    });
-}
-function driveCreateFile(obj){
-  const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
-  const boundary = 'rizmacbound' + Date.now();
-  const body = '--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+
-    '\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(obj)+'\r\n--'+boundary+'--';
-  return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-    method:'POST', headers: driveHeaders({ 'Content-Type': 'multipart/related; boundary='+boundary }), body
-  }).then(r=>r.json()).then(data=>{ DRIVE_FILE_ID = data.id; try{ localStorage.setItem(LS_DRIVE_FILE_ID, DRIVE_FILE_ID); }catch(e){} DRIVE_STORE = obj; return obj; });
-}
-function driveDownloadFile(){
-  return fetch('https://www.googleapis.com/drive/v3/files/'+DRIVE_FILE_ID+'?alt=media', { headers: driveHeaders() })
-    .then(r=>r.json())
-    .then(data=>{ DRIVE_STORE = Object.assign(driveEmptyStore(), data); return DRIVE_STORE; });
-}
-// IMPORTANT: every caller within the same 400ms debounce window must share
-// ONE promise. The old version gave each call its own promise but a single
-// shared timer — so when a later call's clearTimeout() cancelled an earlier
-// call's pending timer, that earlier call's promise was orphaned and never
-// resolved or rejected. It just hung forever. That was invisible for a single
-// edit (nothing else was racing it), but a batch operation like moving many
-// contacts at once fires many saves in a tight burst: only the very last one
-// survived and actually reached Google Drive, while everything before it sat
-// stuck, meaning most of the real changes were silently never persisted even
-// though the app's own on-screen view (which reads local memory, not a fresh
-// fetch) looked completely correct until the app was closed and reopened.
-let driveSavePromise = null;
-function driveSaveFile(){
-  clearTimeout(driveSaveTimer);
-  if(driveSavePromise) return driveSavePromise;
-  driveSavePromise = new Promise((resolve,reject)=>{
-    driveSaveTimer = setTimeout(()=>{
-      fetch('https://www.googleapis.com/upload/drive/v3/files/'+DRIVE_FILE_ID+'?uploadType=media', {
-        method:'PATCH', headers: driveHeaders({'Content-Type':'application/json'}), body: JSON.stringify(DRIVE_STORE)
-      }).then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error((e.error && e.error.message) || ('HTTP '+r.status)); }); return r.json(); })
-        .then(res=>{ driveSavePromise=null; resolve(res); })
-        .catch(err=>{ driveSavePromise=null; reject(err); });
-    }, 400);
-  });
-  return driveSavePromise;
-}
-function driveGenId(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
-function driveListRecords(collection){
-  const store = (DRIVE_STORE && DRIVE_STORE[collection]) || {};
-  return Promise.resolve(Object.keys(store).map(id=>({ id, fields: store[id] })));
-}
-function drivePatchRecord(collection, rid, fields){
-  if(!DRIVE_STORE[collection][rid]) DRIVE_STORE[collection][rid] = {};
-  Object.assign(DRIVE_STORE[collection][rid], fields);
-  return driveSaveFile().then(()=>({ records:[{id:rid}] }));
-}
-function driveCreateRecord(collection, fields){
-  const id = driveGenId();
-  DRIVE_STORE[collection][id] = fields;
-  return driveSaveFile().then(()=>({ records:[{id}] }));
-}
-function driveDeleteRecord(collection, rid){
-  delete DRIVE_STORE[collection][rid];
-  return driveSaveFile();
-}
-function findDriveRecordAnyCollection(rid){
-  for(const coll of DRIVE_COLLECTIONS){ if(DRIVE_STORE[coll] && DRIVE_STORE[coll][rid]) return { collection:coll, fields: DRIVE_STORE[coll][rid] }; }
-  return null;
-}
-// Uploads a document straight into Drive (used for the Inquiry/Quotation/Order
-// attachments from gap #4) and makes it link-viewable, since the dashboard opens
-// these in a new tab the same way it did for Airtable attachment URLs.
-function driveUploadAttachment(rid, fieldId, file){
-  return new Promise((resolve, reject)=>{
-    const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('Could not read that file.'));
-    reader.onload = ()=>{
-      const metadata = { name: file.name, mimeType: file.type || 'application/octet-stream' };
-      const boundary = 'rizmacatt' + Date.now();
-      const base64 = String(reader.result).split(',')[1] || '';
-      const body = '--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+
-        '\r\n--'+boundary+'\r\nContent-Type: '+(file.type||'application/octet-stream')+'\r\nContent-Transfer-Encoding: base64\r\n\r\n'+base64+'\r\n--'+boundary+'--';
-      fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
-        method:'POST', headers: driveHeaders({'Content-Type':'multipart/related; boundary='+boundary}), body
-      }).then(r=>r.json()).then(data=>{
-        if(data.error){ reject(new Error(data.error.message)); return; }
-        fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions', {
-          method:'POST', headers: driveHeaders({'Content-Type':'application/json'}), body: JSON.stringify({ role:'reader', type:'anyone' })
-        }).catch(()=>{}).then(()=>{
-          const rec = findDriveRecordAnyCollection(rid);
-          if(!rec){ reject(new Error('Record not found.')); return; }
-          const existing = rec.fields[fieldId] || [];
-          const newAtt = { id: data.id, url: data.webViewLink, filename: file.name, type: file.type, size: file.size };
-          rec.fields[fieldId] = existing.concat([newAtt]);
-          driveSaveFile().then(()=> resolve({ fields: { [fieldId]: rec.fields[fieldId] } })).catch(reject);
-        });
-      }).catch(reject);
-    };
-    reader.readAsDataURL(file);
-  });
-}
-// One-time move: takes whatever is currently loaded in DATA/RZ_TASKS/NAJMAT_DATA/NM_TASKS
-// (already fetched from Airtable moments ago on this same screen) and writes it into a
-// brand-new Drive file, using the same toAirtableFields()-style converters so the stored
-// shape matches exactly what Airtable would have held. Airtable itself is left untouched.
-function migrateCurrentDataToDrive(){
-  const store = driveEmptyStore();
-  DATA.forEach(r=>{ store.rizmacContacts[r._rid || driveGenId()] = toAirtableFields(r); });
-  RZ_TASKS.forEach(t=>{
-    const fields = { [RTF.title]: t.title||'', [RTF.due]: t.due||null, [RTF.status]: t.status||'Open', [RTF.notes]: t.notes||'', [RTF.completedOn]: t.completed_on||null };
-    if(t.contact_rid) fields[RTF.contact] = [t.contact_rid];
-    store.rizmacTasks[t._rid || driveGenId()] = fields;
-  });
-  (typeof NAJMAT_DATA !== 'undefined' ? NAJMAT_DATA : []).forEach(r=>{ store.najmatContacts[r._rid || driveGenId()] = najmatToFields(r); });
-  (typeof NM_TASKS !== 'undefined' ? NM_TASKS : []).forEach(t=>{
-    const fields = { [NTF.title]: t.title||'', [NTF.due]: t.due||null, [NTF.status]: t.status||'Open', [NTF.notes]: t.notes||'', [NTF.completedOn]: t.completed_on||null };
-    if(t.contact_rid) fields[NTF.contact] = [t.contact_rid];
-    store.najmatTasks[t._rid || driveGenId()] = fields;
-  });
-  return driveSignIn().then(driveFindOrCreateFile).then(()=>{
-    DRIVE_STORE = store;
-    return driveSaveFile();
-  }).then(()=>{
-    localStorage.setItem(LS_BACKEND, 'drive');
-    DATA_BACKEND = 'drive';
-  });
-}
 // Deal-reference documents (gap #4) — uploads a file straight into an Airtable
 // attachment field via Airtable's dedicated content-upload endpoint (accepts the
 // file as base64, no public URL needed). Response includes the field's full
 // attachment list with fresh, short-lived view URLs.
 function airtableUploadAttachment(rid, fieldId, file){
-  if(DATA_BACKEND==='drive') return driveUploadAttachment(rid, fieldId, file);
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Could not read that file.'));
@@ -1636,9 +1383,7 @@ function loadDataFromAirtable(){
     syncStatus('ok','Synced');
   }).catch(e=>{
     syncStatus('err','Sync failed');
-    if(DATA_BACKEND==='drive'){
-      alert('Could not load data from Google Drive: ' + e.message);
-    } else if(/authoriz|token|permission|not found/i.test(e.message)){
+    if(/authoriz|token|permission|not found/i.test(e.message)){
       showSetup('Connection failed: ' + e.message);
     } else {
       alert('Could not load data from Airtable: ' + e.message);
@@ -1674,88 +1419,12 @@ document.getElementById('btn-connect').addEventListener('click', function(){
   });
 });
 document.getElementById('btn-settings').addEventListener('click', function(){
-  if(DATA_BACKEND==='drive'){
-    if(confirm('Switch this dashboard back to Airtable and sign out of Google Drive? Your Drive file is left untouched — you can move it back to Drive again anytime.')){
-      // Fix (2026-08-17): this used to just removeItem(LS_BACKEND), but DATA_BACKEND
-      // defaults to 'drive' whenever there's no saved preference at all, so clearing
-      // the key silently sent the dashboard right back into Drive mode instead of
-      // Airtable. Set it explicitly to 'airtable' so the switch actually sticks.
-      localStorage.setItem(LS_BACKEND, 'airtable');
-      location.reload();
-    }
-    return;
-  }
   if(confirm('Disconnect this dashboard from Airtable and re-enter your access token?')){
     localStorage.removeItem(LS_TOKEN);
     location.reload();
   }
 });
-document.getElementById('btn-drive-signin').addEventListener('click', function(){
-  const btn = this;
-  const errEl = document.getElementById('drive-setup-error');
-  errEl.style.display = 'none';
-  btn.textContent = 'Connecting…';
-  driveSignIn().then(driveFindOrCreateFile).then(()=>{
-    document.getElementById('drive-signin-screen').style.display = 'none';
-    document.getElementById('boot').style.display = 'flex';
-    return loadDataFromAirtable();
-  }).then(()=>{
-    return typeof loadRzTasks==='function' ? null : null;
-  }).then(()=>{
-    document.getElementById('boot').style.display = 'none';
-    initBackupFolder();
-  }).catch(e=>{
-    btn.textContent = 'Sign in with Google';
-    errEl.style.display = 'block';
-    errEl.textContent = 'Could not connect: ' + e.message;
-  });
-});
-// Gap #5 — one-click, one-time move of everything currently on screen (already
-// loaded from Airtable) into a new file in Mohammad's own Google Drive. Airtable
-// is left completely untouched, so this is safe to try and easy to back out of
-// via the ⚙ button.
-function handleMoveToDrive(){
-  if(!confirm('This copies everything currently in your CRM — all Rizmac and Najmat contacts and to-dos — into a new file in your own Google Drive. Your Airtable data stays exactly as it is, untouched. After this, the dashboard will read and save from Google Drive instead. Continue?')) return;
-  const btn = document.getElementById('btn-move-to-drive');
-  const prevText = btn.textContent;
-  btn.textContent = 'Moving to Drive…'; btn.disabled = true;
-  migrateCurrentDataToDrive().then(()=>{
-    alert('Done — your CRM now lives in your Google Drive. Reloading the dashboard from there now.');
-    location.reload();
-  }).catch(e=>{
-    btn.textContent = prevText; btn.disabled = false;
-    alert('Could not move to Google Drive: ' + e.message);
-  });
-}
 function boot(){
-  paintBackendBadge();
-  if(DATA_BACKEND==='drive'){
-    document.getElementById('setup-screen').style.display = 'none';
-    const cachedToken = loadDriveTokenCache();
-    if(cachedToken){
-      // Still-valid token from an earlier sign-in this hour — skip the
-      // sign-in screen entirely and load straight in.
-      DRIVE_TOKEN = cachedToken;
-      document.getElementById('drive-signin-screen').style.display = 'none';
-      document.getElementById('boot').style.display = 'flex';
-      driveFindOrCreateFile().then(()=>{
-        return loadDataFromAirtable();
-      }).then(()=>{
-        document.getElementById('boot').style.display = 'none';
-        initBackupFolder();
-      }).catch(()=>{
-        // Cached token turned out to be no good (e.g. revoked) — clear it and
-        // fall back to the visible sign-in screen.
-        try{ localStorage.removeItem(LS_DRIVE_TOKEN); }catch(e){}
-        document.getElementById('boot').style.display = 'none';
-        document.getElementById('drive-signin-screen').style.display = 'flex';
-      });
-      return;
-    }
-    document.getElementById('boot').style.display = 'none';
-    document.getElementById('drive-signin-screen').style.display = 'flex';
-    return;
-  }
   document.getElementById('boot').style.display = 'flex';
   document.getElementById('setup-screen').style.display = 'none';
   AT_TOKEN = localStorage.getItem(LS_TOKEN);
@@ -1766,8 +1435,6 @@ function boot(){
     document.getElementById('boot').style.display = 'none';
     recoverLegacyLocalData();
     initBackupFolder();
-    // "Move to Drive" intentionally stays hidden — Google Drive backend was
-    // removed 2026-08-17; Airtable is the only supported backend now.
   });
 }
 
@@ -3150,7 +2817,6 @@ function najmatSyncStatus(mode, text){
   if(t) t.textContent = text;
 }
 function fetchAllNajmatRecords(){
-  if(DATA_BACKEND==='drive') return driveListRecords('najmatContacts');
   let all = [];
   function page(offset){
     const url = najmatApiBase() + '?pageSize=100&returnFieldsByFieldId=true' + (offset ? '&offset='+offset : '');
@@ -3161,17 +2827,14 @@ function fetchAllNajmatRecords(){
   return page(null);
 }
 function najmatPatch(rid, fields){
-  if(DATA_BACKEND==='drive') return drivePatchRecord('najmatContacts', rid, fields);
   return fetch(najmatApiBase(), { method:'PATCH', headers: najmatAuthHeaders(), body: JSON.stringify({ typecast:true, records:[{id:rid, fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function najmatCreate(fields){
-  if(DATA_BACKEND==='drive') return driveCreateRecord('najmatContacts', fields);
   return fetch(najmatApiBase(), { method:'POST', headers: najmatAuthHeaders(), body: JSON.stringify({ typecast:true, records:[{fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function najmatDelete(rid){
-  if(DATA_BACKEND==='drive') return driveDeleteRecord('najmatContacts', rid);
   return fetch(najmatApiBase() + '?records[]=' + encodeURIComponent(rid), { method:'DELETE', headers:{ 'Authorization':'Bearer '+AT_TOKEN } })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
@@ -3913,7 +3576,6 @@ let RZ_TASKS = [];
 let todoDateRz = null;
 function rzTasksApiBase(){ return 'https://api.airtable.com/v0/' + AT_BASE + '/' + RZ_TASKS_TABLE; }
 function fetchAllRzTasks(){
-  if(DATA_BACKEND==='drive') return driveListRecords('rizmacTasks');
   let all = [];
   function page(offset){
     const url = rzTasksApiBase() + '?pageSize=100&returnFieldsByFieldId=true' + (offset ? '&offset='+offset : '');
@@ -3933,17 +3595,14 @@ function loadRzTasks(){
   return fetchAllRzTasks().then(recs=>{ RZ_TASKS = recs.map(rzTaskFromAirtable); updateTodoBadgeRz(); }).catch(e=>console.warn('Rizmac tasks load failed', e));
 }
 function rzTaskPatch(rid, fields){
-  if(DATA_BACKEND==='drive') return drivePatchRecord('rizmacTasks', rid, fields);
   return fetch(rzTasksApiBase(), { method:'PATCH', headers: authHeaders(), body: JSON.stringify({ typecast:true, records:[{id:rid, fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function rzTaskCreate(fields){
-  if(DATA_BACKEND==='drive') return driveCreateRecord('rizmacTasks', fields);
   return fetch(rzTasksApiBase(), { method:'POST', headers: authHeaders(), body: JSON.stringify({ typecast:true, records:[{fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function rzTaskDelete(rid){
-  if(DATA_BACKEND==='drive') return driveDeleteRecord('rizmacTasks', rid);
   return fetch(rzTasksApiBase()+'?records[]='+encodeURIComponent(rid), { method:'DELETE', headers: authHeaders() })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
@@ -4147,7 +3806,6 @@ let NM_TASKS = [];
 let todoDateNm = null;
 function nmTasksApiBase(){ return 'https://api.airtable.com/v0/' + NAJMAT_BASE + '/' + NM_TASKS_TABLE; }
 function fetchAllNmTasks(){
-  if(DATA_BACKEND==='drive') return driveListRecords('najmatTasks');
   let all = [];
   function page(offset){
     const url = nmTasksApiBase() + '?pageSize=100&returnFieldsByFieldId=true' + (offset ? '&offset='+offset : '');
@@ -4167,17 +3825,14 @@ function loadNmTasks(){
   return fetchAllNmTasks().then(recs=>{ NM_TASKS = recs.map(nmTaskFromAirtable); updateTodoBadgeNm(); }).catch(e=>console.warn('Najmat tasks load failed', e));
 }
 function nmTaskPatch(rid, fields){
-  if(DATA_BACKEND==='drive') return drivePatchRecord('najmatTasks', rid, fields);
   return fetch(nmTasksApiBase(), { method:'PATCH', headers: najmatAuthHeaders(), body: JSON.stringify({ typecast:true, records:[{id:rid, fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function nmTaskCreate(fields){
-  if(DATA_BACKEND==='drive') return driveCreateRecord('najmatTasks', fields);
   return fetch(nmTasksApiBase(), { method:'POST', headers: najmatAuthHeaders(), body: JSON.stringify({ typecast:true, records:[{fields:fields}] }) })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 function nmTaskDelete(rid){
-  if(DATA_BACKEND==='drive') return driveDeleteRecord('najmatTasks', rid);
   return fetch(nmTasksApiBase()+'?records[]='+encodeURIComponent(rid), { method:'DELETE', headers: najmatAuthHeaders() })
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
