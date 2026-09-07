@@ -14,7 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..700&family=Manrope:wght@400;500;600;700;800&display=swap">
-<meta name="theme-color" content="#1f3d33">
+<meta name="theme-color" content="#6d2a26">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <style>
@@ -33,13 +33,16 @@
      sideways in the installed app. overscroll-behavior-x also stops the
      rubbery side-bounce that made the whole app feel like it was "sliding"
      off its own background instead of feeling stuck in place like a real app. */
-  html{overflow-x:hidden;width:100%;scrollbar-width:thin;scrollbar-color:var(--gold) var(--bg);}
+  html{overflow-x:hidden;width:100%;scrollbar-width:thin;scrollbar-color:#cabfa8 var(--bg);}
   /* One clean, thin scrollbar for the whole page — no nested inner scroll regions
      (the table used to cap its own height and scroll independently, which produced
-     a second scrollbar next to the page's own; it now just grows with the page). */
-  ::-webkit-scrollbar{width:11px;height:11px;}
+     a second scrollbar next to the page's own; it now just grows with the page).
+     Muted neutral thumb (not the bright gold accent) so it reads as a normal,
+     understated system scrollbar; it darkens to navy on hover so it's still
+     obviously the thing to click and drag. */
+  ::-webkit-scrollbar{width:10px;height:10px;}
   ::-webkit-scrollbar-track{background:var(--bg);}
-  ::-webkit-scrollbar-thumb{background:var(--gold);border-radius:20px;border:3px solid var(--bg);}
+  ::-webkit-scrollbar-thumb{background:#cabfa8;border-radius:20px;border:2px solid var(--bg);}
   ::-webkit-scrollbar-thumb:hover{background:var(--navy);}
   body{margin:0;font-family:'Manrope',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#241f18;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden;width:100%;overscroll-behavior-x:none;}
   header{background:var(--bg);color:#241f18;padding:18px 30px;box-shadow:none;border-bottom:1px solid var(--border);position:relative;}
@@ -51,9 +54,11 @@
      way it did with the fixed-height version. */
   .topline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;}
   .header-brand-block{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;}
-  /* Small status readout, pinned to the header's own bottom-left corner —
-     a separate element, deliberately not aligned with the title/tabs above it */
-  .header-corner-status{position:absolute;left:16px;bottom:8px;display:flex;align-items:center;gap:5px;transform:scale(.72);transform-origin:left center;}
+  /* Sync/status readout now lives inline as the first item in the header's
+     utility-button row (see .header-actions-row) instead of floating as an
+     absolutely-positioned corner badge — it sits right next to Refresh, which
+     is the button it's actually reporting on, and can never overlap anything. */
+  .header-corner-status{display:flex;align-items:center;gap:5px;padding:6px 10px;}
   /* Logo: horizontally centered by the grid column, and explicitly
      vertically centered against the column's full stretched height */
   /* Same round-framed badge treatment for whichever logo is currently shown,
@@ -67,12 +72,13 @@
      into the tab buttons above it. */
   .header-btn-grid{justify-self:end;align-self:center;display:flex;flex-direction:column;
     gap:6px;align-items:stretch;min-width:170px;}
-  .header-actions-row{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
-  /* Narrow (phone) screens: the 3-column button grid + absolutely-positioned
-     corner badge that work fine on desktop have no room to breathe here, which
-     is what was causing the Google Drive/sync readout to sit on top of the
-     Refresh button. Below 760px, stack everything vertically instead and put
-     the badge back into normal document flow so it can never overlap anything. */
+  /* One unified toolbar strip — sync status + backup/meetings/to-do/refresh/settings
+     all sit inside a single bordered pill with thin dividers between items (the same
+     divider language as the KPI stat row above), instead of separate floating white
+     buttons. Reads as one deliberate control cluster, not a scattered row of icons. */
+  .header-actions-row{display:flex;align-items:stretch;gap:0;justify-content:flex-end;
+    flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:10px;
+    padding:2px;box-shadow:var(--shadow-sm);overflow:hidden;}
   @media (max-width:760px){
     header{padding:14px 16px 12px;}
     .topline{grid-template-columns:1fr;justify-items:center;text-align:center;gap:10px;}
@@ -80,16 +86,13 @@
     .header-logo-center{order:-1;}
     .header-btn-grid{justify-self:stretch;width:100%;min-width:0;}
     .header-actions-row{justify-content:center;}
-    /* Tucked into its own small corner tag instead of sitting in the centered
-       flow next to the logo — was reading as attached to it, which looked
-       messy. top-right corner, well clear of the centered logo/title. */
-    .header-corner-status{position:absolute;top:10px;right:10px;left:auto;bottom:auto;
-      transform:scale(.58);transform-origin:right top;justify-content:flex-end;margin-top:0;}
   }
-  .header-btn-grid .btn{background:#fff;color:var(--gray);border:1px solid var(--border);
-    box-shadow:var(--shadow-sm);padding:7px 11px;font-size:12.5px;font-weight:600;white-space:nowrap;}
-  .header-btn-grid .btn:hover{background:var(--sage-light);transform:none;box-shadow:var(--shadow-sm);}
-  .header-btn-grid .btn-primary{background:var(--navy);color:#fff;font-weight:700;border-color:transparent;
+  .header-btn-grid .btn{background:transparent;color:var(--gray);border:none;border-right:1px solid var(--border);
+    box-shadow:none;border-radius:0;padding:7px 11px;font-size:12.5px;font-weight:600;white-space:nowrap;}
+  .header-btn-grid .btn:last-child{border-right:none;}
+  .header-actions-row .header-corner-status{border-right:1px solid var(--border);}
+  .header-btn-grid .btn:hover{background:rgba(179,137,63,.14);transform:none;box-shadow:none;}
+  .header-btn-grid .btn-primary{background:var(--navy);color:#fff;font-weight:700;border:none;border-radius:8px;
     width:100%;padding:8px 14px;font-size:12.5px;box-shadow:0 2px 8px rgba(109,42,38,.25);}
   .header-btn-grid .btn-primary:hover{background:var(--navy2);box-shadow:0 3px 10px rgba(109,42,38,.32);}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
@@ -217,7 +220,10 @@
     padding:4px 7px;box-shadow:none;font-size:12px;line-height:1;}
   .btn.small.log-email:hover, .btn.small.log-call:hover{background:var(--sage-light);}
   .row-actions .btn.small{padding:4px 9px;font-size:11.5px;}
-  .activity-log-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  /* Given its own bordered bar, like the filter toolbar above it, instead of the
+     date input + Today button just floating loose above the KPI row. */
+  .activity-log-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 12px;}
   .activity-date-picker{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--gray);}
   .activity-date-picker input{font-family:'Manrope',sans-serif;font-size:12.5px;padding:6px 9px;
     border:1px solid var(--border);border-radius:7px;background:#fdfbf5;color:#241f18;}
@@ -414,7 +420,10 @@
   /* Rizmac/Najmat switcher sits directly under the title, in its own dark
      pill track — active tab picked out in soft white so it reads clearly
      against the green header without competing with the gold CTA button. */
-  .company-tabs{display:inline-flex;gap:3px;background:var(--sage-light);padding:4px;border-radius:14px;}
+  /* Was a leftover sage-green tint from the old color scheme sitting behind a
+     maroon active tab — clashed with the rest of the palette. Warm cream/gold
+     tint instead, so the whole switcher reads as one family of colors. */
+  .company-tabs{display:inline-flex;gap:3px;background:rgba(109,42,38,.07);padding:4px;border-radius:14px;}
   .tab-btn{background:transparent;color:var(--gray);border:1px solid transparent;padding:6px 20px;
     border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease;}
   .tab-btn:hover{background:rgba(0,0,0,.04);}
@@ -497,17 +506,6 @@
 </div>
 
 <header>
-  <!-- Storage/sync status: a small separate readout tucked into the header's
-       own bottom-left corner — detached from the title/tabs column entirely,
-       not left-aligned with them. Safe to position absolutely now that the
-       header's real height always fits its tallest column (the button grid),
-       so this can never get clipped the way it did before that fix. -->
-  <div class="header-corner-status" id="rizmacHeaderActions">
-    <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
-  </div>
-  <div class="header-corner-status" id="najmatHeaderActions" style="display:none;">
-    <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
-  </div>
   <div class="topline">
     <!-- Left column: title + tab switcher only -->
     <div class="header-brand-block">
@@ -520,10 +518,14 @@
     </div>
     <!-- Middle column: logo alone, centered by the grid itself -->
     <img id="header-logo" src="" alt="Rizmac" class="header-logo-center" style="width:118px;height:auto;object-fit:contain;">
-    <!-- Right column: primary CTA on its own row, secondary utilities in one compact row below -->
+    <!-- Right column: primary CTA on its own row, one unified utility toolbar below it
+         (sync status + backup/meetings/to-do/refresh/settings all in one bordered strip) -->
     <div class="header-btn-grid" id="rizmacHeaderBtns">
       <button class="btn btn-primary" onclick="openModal(null)">+ Add new prospect</button>
-      <div class="header-actions-row">
+      <div class="header-actions-row" id="rizmacHeaderActions">
+        <div class="header-corner-status">
+          <span class="sync-status" id="autoSaveStatus"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">Connecting…</span></span>
+        </div>
         <button class="btn" id="btn-backup-folder" onclick="chooseBackupFolder()" title="Click to choose a backup folder. Every save will back up here automatically.">💾 Backup <span id="backupDot" class="mini-dot"></span></button>
         <button class="btn" onclick="showMeetingsView()" title="Meetings">📅 <span id="meetingsScheduledCount">0</span></button>
         <button class="btn" onclick="showTodoView()" title="To-Do">📋 <span id="rzTodoCount">0</span></button>
@@ -533,7 +535,10 @@
     </div>
     <div class="header-btn-grid" id="najmatHeaderBtns" style="display:none;">
       <button class="btn btn-primary" onclick="openNajmatModal(null)">+ Add new lead</button>
-      <div class="header-actions-row">
+      <div class="header-actions-row" id="najmatHeaderActions">
+        <div class="header-corner-status">
+          <span class="sync-status" id="najmatSyncStatus"><span class="sync-dot" id="najmat-sync-dot"></span><span id="najmatSyncText">Loading…</span></span>
+        </div>
         <button class="btn" onclick="showNajmatMeetingsView()" title="Meetings">📅 <span id="nmMeetingsScheduledCount">0</span></button>
         <button class="btn" onclick="najmatShowTodoView()" title="To-Do">📋 <span id="nmTodoCount">0</span></button>
         <button class="btn" id="btn-najmat-refresh" onclick="loadNajmatData()" title="Refresh">🔄</button>
@@ -619,8 +624,8 @@
     <select id="fSource" onchange="applyFilters()"><option value="">All sources</option></select>
     <select id="fPriority" onchange="applyFilters()"><option value="">All priorities</option><option>High</option><option>Medium</option><option>Low</option></select>
     <select id="fFollowup" onchange="applyFilters()">
+      <option value="" selected>All follow-ups</option>
       <option value="action">🔴 Needs action today (overdue + due today)</option>
-      <option value="">All follow-ups</option>
       <option value="overdue">Overdue</option>
       <option value="today">Due today</option>
       <option value="next3">Next 3 days</option>
@@ -810,14 +815,18 @@ const DASH_TABS = ['overview','myqueue','system','alerts','company','activity','
 let activityLogDate = today();
 function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
-// the Overview tab open; once you've explicitly closed a tab, that "closed" choice is
-// remembered too.
-let activeDashboardTab = (()=>{ const v = localStorage.getItem('rzActiveDashboardTab'); return v===null ? 'overview' : (v || null); })();
+// the tab bar closed by default — the page opens straight to the filters + table,
+// and any one tab (Overview, My Follow-Up, etc.) is a single click away when you
+// actually want the KPI breakdown, instead of always taking up the top of the
+// screen. (Storage key bumped to _v2 so this new default applies even to browsers
+// that already had "overview" saved from before; once you pick/close a tab here,
+// that choice is remembered same as always.)
+let activeDashboardTab = (()=>{ const v = localStorage.getItem('rzActiveDashboardTab_v2'); return v===null ? null : (v || null); })();
 function switchDashboardTab(key){
   // Clicking the tab that's already open closes it, so you can view something and then
   // collapse it back down without hunting for a separate close control.
   activeDashboardTab = (activeDashboardTab===key) ? null : key;
-  try{ localStorage.setItem('rzActiveDashboardTab', activeDashboardTab || ''); }catch(e){}
+  try{ localStorage.setItem('rzActiveDashboardTab_v2', activeDashboardTab || ''); }catch(e){}
   applyDashboardTabState();
   // Charts drawn while their panel was display:none end up with a 0x0 canvas;
   // force a resize once the Analytics panel is actually visible.
@@ -827,7 +836,7 @@ function switchDashboardTab(key){
 }
 function closeDashboardTab(){
   activeDashboardTab = null;
-  try{ localStorage.setItem('rzActiveDashboardTab',''); }catch(e){}
+  try{ localStorage.setItem('rzActiveDashboardTab_v2',''); }catch(e){}
   applyDashboardTabState();
 }
 const DASH_TAB_TITLES = {
