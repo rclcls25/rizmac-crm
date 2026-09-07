@@ -193,6 +193,14 @@
   .btn.clear-filters{background:#fff;color:var(--clay);border:1.5px solid var(--clay);font-weight:700;margin-left:auto;}
   .btn.clear-filters:hover{background:var(--clay);color:#fff;}
   .btn:disabled{opacity:.55;cursor:default;}
+  .btn.small.log-email, .btn.small.log-call{background:#fff;color:var(--navy);border:1px solid var(--border);
+    padding:5px 8px;box-shadow:none;}
+  .btn.small.log-email:hover, .btn.small.log-call:hover{background:var(--sage-light);}
+  .activity-log-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .activity-date-picker{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--gray);}
+  .activity-date-picker input{font-family:'Manrope',sans-serif;font-size:12.5px;padding:6px 9px;
+    border:1px solid var(--border);border-radius:7px;background:#fdfbf5;color:#241f18;}
+  .activity-log-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:16px;}
   table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-md);}
   thead th{background:#efe9da;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
     color:#6b5f4d;padding:12px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;}
@@ -521,6 +529,7 @@
     <button class="dash-tab" data-tab="system" onclick="switchDashboardTab('system')">System Status <span class="tab-badge" id="tabCount-system">0</span></button>
     <button class="dash-tab" data-tab="alerts" onclick="switchDashboardTab('alerts')">Needs Attention <span class="tab-badge" id="tabCount-alerts">0</span></button>
     <button class="dash-tab" data-tab="company" onclick="switchDashboardTab('company')">By Company <span class="tab-badge" id="tabCount-company">0</span></button>
+    <button class="dash-tab" data-tab="activity" onclick="switchDashboardTab('activity')">Activity Log <span class="tab-badge" id="tabCount-activity">0</span></button>
     <button class="dash-tab" data-tab="analytics" onclick="switchDashboardTab('analytics')">Analytics</button>
     <button class="dash-tab" data-tab="viewstools" onclick="switchDashboardTab('viewstools')">Views &amp; Tools</button>
   </div>
@@ -534,6 +543,7 @@
   <div class="dash-panel" id="panel-system"></div>
   <div class="dash-panel" id="panel-alerts"></div>
   <div class="dash-panel" id="panel-company"></div>
+  <div class="dash-panel" id="panel-activity"></div>
   <div class="dash-panel" id="panel-analytics">
     <div class="charts-grid">
       <div class="chart-card"><h3>Conversion funnel</h3><div style="font-size:10.5px;color:var(--gray);margin:-6px 0 6px;">Each bar = contacts currently at that exact stage (not cumulative)</div><div class="chart-inner-lg"><canvas id="rzFunnelChart"></canvas></div></div>
@@ -773,7 +783,9 @@ let showContactedOnly = false;
 // Analytics / Views & Tools) — only one panel is shown at a time, switched by clicking
 // a tab, instead of each section independently expanding in place. Remembers the last
 // tab you had open across visits. Filter contacts stays outside this system entirely.
-const DASH_TABS = ['overview','myqueue','system','alerts','company','analytics','viewstools'];
+const DASH_TABS = ['overview','myqueue','system','alerts','company','activity','analytics','viewstools'];
+let activityLogDate = today();
+function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
 // the Overview tab open; once you've explicitly closed a tab, that "closed" choice is
 // remembered too.
@@ -797,7 +809,7 @@ function closeDashboardTab(){
 }
 const DASH_TAB_TITLES = {
   overview:'Overview', myqueue:'My Follow-Up Queue', system:'System Status',
-  alerts:'Needs Attention', company:'By Company', analytics:'Analytics', viewstools:'Views & Tools'
+  alerts:'Needs Attention', company:'By Company', activity:'Activity Log', analytics:'Analytics', viewstools:'Views & Tools'
 };
 function applyDashboardTabState(){
   DASH_TABS.forEach(k=>{
@@ -1325,7 +1337,8 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   meetingStatus:'fldsFm2HOuBHdKOLP', meetingDateTime:'fldQLKdtabptWRVOp', meetingType:'fldyR7SJ9Dy3J3LpG',
   meetingPrepNotes:'fldxu1ykAEgdVQm4g', meetingOutcomeNotes:'fld5L9AMlN62l15eV',
   log:'fldcBaPsb5ed9tYtB', dashboardId:'fldTepEzVzofgvW7X',
-  inquiryDoc:'fldkaPxGuj8zem8QY', quoteDoc:'fld6VW7MCe802Ic8h', orderDoc:'fldqOB6IW9gqeUsf4' };
+  inquiryDoc:'fldkaPxGuj8zem8QY', quoteDoc:'fld6VW7MCe802Ic8h', orderDoc:'fldqOB6IW9gqeUsf4',
+  lastContactType:'fld28HxXXLnTf8WXA' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1349,7 +1362,7 @@ function fromAirtable(rec){
     deal_value: f[F.dealValue] || 0, loss_reason: f[F.lossReason] || '', lost_to: f[F.lostTo] || '',
     source: f[F.source] || '', stage_entered_on: f[F.stageEnteredOn] || '',
     skip_reason: f[F.skipReason] || '',
-    last_contact: f[F.lastContact] || '', next_followup: f[F.nextFollowup] || '',
+    last_contact: f[F.lastContact] || '', last_contact_type: f[F.lastContactType] || '', next_followup: f[F.nextFollowup] || '',
     meeting_status: f[F.meetingStatus] || 'Not Scheduled', meeting_datetime: f[F.meetingDateTime] || '',
     meeting_type: f[F.meetingType] || '', meeting_prep_notes: f[F.meetingPrepNotes] || '',
     meeting_outcome_notes: f[F.meetingOutcomeNotes] || '',
@@ -1386,6 +1399,7 @@ function toAirtableFields(r){
   fields[F.skipReason] = r.skip_reason || '';
   if(r.stage_entered_on) fields[F.stageEnteredOn] = r.stage_entered_on;
   if(r.last_contact) fields[F.lastContact] = r.last_contact;
+  if(r.last_contact_type) fields[F.lastContactType] = r.last_contact_type;
   fields[F.nextFollowup] = r.next_followup || null;
   fields[F.meetingStatus] = r.meeting_status || 'Not Scheduled';
   fields[F.meetingDateTime] = r.meeting_datetime || null;
@@ -1686,8 +1700,47 @@ function renderCards(){
   const meetingSoonToggleBtn = document.getElementById('meetingSoonToggleBtn');
   if(meetingSoonToggleBtn) meetingSoonToggleBtn.classList.toggle('toggle-on', showMeetingSoonOnly);
   renderCompanyPanel(active);
+  renderActivityPanel(active);
   renderRizmacCharts(active);
   updateTodoBadgeRz();
+}
+// "Activity Log" — daily record of who was emailed / called, built from Last Contact
+// date + the one-click 📧/📞 tag on each contact row (see quickLogContact). Not a full
+// audit trail of every message — it's whatever was tagged for that contact's most
+// recent contact date, which is what a single-person sales operation actually needs.
+function renderActivityPanel(active){
+  const el = document.getElementById('panel-activity');
+  if(!el) return;
+  const dayRecords = active.filter(r=>r.last_contact===activityLogDate && r.last_contact_type);
+  const emailList = dayRecords.filter(r=>r.last_contact_type==='Email').sort((a,b)=>a.name.localeCompare(b.name));
+  const callList = dayRecords.filter(r=>r.last_contact_type==='Call').sort((a,b)=>a.name.localeCompare(b.name));
+  const tabCountActivity = document.getElementById('tabCount-activity');
+  if(tabCountActivity) tabCountActivity.textContent = dayRecords.length;
+  const rowHtml = (r,icon) => `<div class="company-contact-row" onclick="closeDashboardTab();openModal(${r.id});">
+      <span class="company-contact-name">${icon} ${esc(r.name)}${r.company?' <span class="muted">· '+esc(r.company)+'</span>':''}</span>
+      <span class="pill ${statusClass(r.status)}">${esc(r.status||'Not Contacted')}</span>
+    </div>`;
+  el.innerHTML = `
+    <div class="activity-log-head">
+      <label class="activity-date-picker">Date <input type="date" value="${esc(activityLogDate)}" onchange="setActivityLogDate(this.value)"></label>
+      <button class="btn ghost small" onclick="setActivityLogDate('${today()}')">Today</button>
+    </div>
+    <div class="cards compact" style="margin-top:12px;">
+      <div class="card good"><div class="icon">📧</div><div class="num">${emailList.length}</div><div class="lbl">Emails logged</div></div>
+      <div class="card good"><div class="icon">📞</div><div class="num">${callList.length}</div><div class="lbl">Calls logged</div></div>
+      <div class="card"><div class="icon">📋</div><div class="num">${dayRecords.length}</div><div class="lbl">Total contacted</div></div>
+    </div>
+    <div class="activity-log-columns">
+      <div>
+        <div class="toolbar-label" style="margin-top:0;">📧 Emails — ${esc(activityLogDate)}</div>
+        ${emailList.length ? emailList.map(r=>rowHtml(r,'📧')).join('') : '<p class="muted">Nothing logged as Email for this date yet. Use the 📧 button on a contact row.</p>'}
+      </div>
+      <div>
+        <div class="toolbar-label" style="margin-top:0;">📞 Calls — ${esc(activityLogDate)}</div>
+        ${callList.length ? callList.map(r=>rowHtml(r,'📞')).join('') : '<p class="muted">Nothing logged as Call for this date yet. Use the 📞 button on a contact row.</p>'}
+      </div>
+    </div>
+  `;
 }
 // "By Company" view — groups every active contact under the company they work at,
 // so you can see at a glance everywhere you already know more than one person
@@ -2035,6 +2088,23 @@ function quickSetPriority(id, val){
     alert('Could not save priority change: ' + err.message);
   });
 }
+// One-click activity log: tag today's Email/Call contact without opening the full modal.
+// Feeds the "Activity Log" dashboard tab (grouped by Last Contact date + type).
+function quickLogContact(id, type){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  const prevDate = r.last_contact, prevType = r.last_contact_type;
+  r.last_contact = today();
+  r.last_contact_type = type;
+  applyFilters();
+  renderCards();
+  airtablePatch(r._rid, {[F.lastContact]: r.last_contact, [F.lastContactType]: type}).catch(err=>{
+    r.last_contact = prevDate; r.last_contact_type = prevType;
+    applyFilters();
+    renderCards();
+    alert('Could not save this log entry: ' + err.message);
+  });
+}
 
 function renderRows(){
   const start = (page-1)*PAGE_SIZE;
@@ -2066,7 +2136,9 @@ function renderRows(){
       : `<span class="pill ${statusClass(r.status)}">${esc(r.status||'Not Contacted')}</span>${r.skip_reason?'<div class="muted" style="margin-top:4px;color:#9a6300;">🔎 '+esc(r.skip_reason)+'</div>':''}`;
     const actionCell = (r.archived || r.deleted)
       ? `<button class="btn small sage" onclick="restoreRecord(${r.id})">Restore</button> <button class="btn small ghost" onclick="openModal(${r.id})">Open</button>`
-      : `<button class="btn small" onclick="openModal(${r.id})">Open</button>`;
+      : `<button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();quickLogContact(${r.id},'Email')">📧</button>
+         <button class="btn small log-call" title="Log a call made today" onclick="event.stopPropagation();quickLogContact(${r.id},'Call')">📞</button>
+         <button class="btn small" onclick="openModal(${r.id})">Open</button>`;
     const liBtn = r.linkedin_url ? `<a class="li-btn" href="${esc(r.linkedin_url)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.03-1.85-3.03-1.85 0-2.14 1.45-2.14 2.94v5.66H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.38-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13zM7.11 20.45H3.56V9h3.55v11.45z"/></svg>LinkedIn</a>` : '<span class="muted">—</span>';
     return `<tr class="${r.deleted?'is-deleted':(r.archived?'is-archived':'')}">
       <td><div class="company">${esc(r.name)}</div><div class="muted">${esc(r.title||'')}</div></td>
@@ -2076,7 +2148,7 @@ function renderRows(){
       <td class="contact-cell">${contactHtml}</td>
       <td>${statusCell}</td>
       <td><select class="pri-select pri-${r.priority||'Medium'}" onchange="quickSetPriority(${r.id}, this.value)" onclick="event.stopPropagation()">${['High','Medium','Low'].map(p=>`<option value="${p}" ${p===(r.priority||'Medium')?'selected':''}>${p}</option>`).join('')}</select></td>
-      <td>${esc(r.last_contact||'—')}</td>
+      <td>${esc(r.last_contact||'—')}${r.last_contact_type?' <span title="'+esc(r.last_contact_type)+'">'+(r.last_contact_type==='Email'?'📧':'📞')+'</span>':''}</td>
       <td class="${fuClass}">${esc(fuText)}</td>
       <td>${actionCell}</td>
     </tr>`;
@@ -2842,7 +2914,8 @@ const NF = {
   stage:'fldiceI50mmnEWpZI', nextFollowup:'fldk4qsIKOPRHxmsG', lastContact:'fldwbCZqFl6eS7JIf',
   notes:'fldr6GITCjLFtvN6A', recordStatus:'fld2dtSROu1fNivwd',
   meetingStatus:'fldUcnsweVKHSbGYQ', meetingDateTime:'fld6RT1hVYtU1W6FK', meetingType:'fldg5E2GmhcQhNxmf',
-  meetingPrepNotes:'fldWdgONKYzijZdfr', meetingOutcomeNotes:'fldhNUDWKGS1kGt5n'
+  meetingPrepNotes:'fldWdgONKYzijZdfr', meetingOutcomeNotes:'fldhNUDWKGS1kGt5n',
+  lastContactType:'fldY02S1RjUgO74ZU'
 };
 const NM_STAGES = ['New Lead','Contacted','Inquiry Received','Sample Requested','Sample Sent','Quoted','Negotiation','Order Placed','Not Interested / Lost'];
 const NM_OPEN_STAGES = NM_STAGES.filter(s=>!['Order Placed','Not Interested / Lost'].includes(s));
@@ -2957,7 +3030,7 @@ function najmatFromAirtable(rec){
     linkedin_url: f[NF.linkedin] || '', website: f[NF.website] || '',
     source: f[NF.source] || '', deal_value: f[NF.dealValue] || 0, moq_notes: f[NF.moqNotes] || '',
     priority: f[NF.priority] || 'Medium', stage: f[NF.stage] || 'New Lead',
-    next_followup: f[NF.nextFollowup] || '', last_contact: f[NF.lastContact] || '',
+    next_followup: f[NF.nextFollowup] || '', last_contact: f[NF.lastContact] || '', last_contact_type: f[NF.lastContactType] || '',
     notes: f[NF.notes] || '',
     record_status: recStatus,
     archived: recStatus === 'Archived',
@@ -2987,6 +3060,7 @@ function najmatToFields(r){
   fields[NF.stage] = r.stage || 'New Lead';
   fields[NF.nextFollowup] = r.next_followup || null;
   if(r.last_contact) fields[NF.lastContact] = r.last_contact;
+  if(r.last_contact_type) fields[NF.lastContactType] = r.last_contact_type;
   fields[NF.notes] = r.notes || '';
   fields[NF.recordStatus] = r.record_status || 'Active';
   fields[NF.meetingStatus] = r.meeting_status || 'Not Scheduled';
@@ -3239,6 +3313,21 @@ function najmatQuickSetPriority(rid, val){
     alert('Could not save priority change: ' + err.message);
   });
 }
+function najmatQuickLogContact(rid, type){
+  const r = NAJMAT_DATA.find(x=>x._rid===rid);
+  if(!r) return;
+  const prevDate = r.last_contact, prevType = r.last_contact_type;
+  r.last_contact = today();
+  r.last_contact_type = type;
+  najmatApplyFilters();
+  najmatRenderCards();
+  najmatPatch(r._rid, {[NF.lastContact]: r.last_contact, [NF.lastContactType]: type}).catch(err=>{
+    r.last_contact = prevDate; r.last_contact_type = prevType;
+    najmatApplyFilters();
+    najmatRenderCards();
+    alert('Could not save this log entry: ' + err.message);
+  });
+}
 
 function najmatRenderRows(){
   const start = (najmatPage-1)*NAJMAT_PAGE_SIZE;
@@ -3267,7 +3356,7 @@ function najmatRenderRows(){
       <td class="${fuClass}">${esc(fuText)}</td>
       <td>${meetingFlag}</td>
       <td>${li}</td>
-      <td><button class="btn small ghost" onclick="openNajmatModal('${r._rid}')">Open</button></td>
+      <td>${(r.archived||r.deleted) ? '' : `<button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Email')">📧</button> <button class="btn small log-call" title="Log a call made today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Call')">📞</button> `}<button class="btn small ghost" onclick="openNajmatModal('${r._rid}')">Open</button></td>
     </tr>`;
   }).join('');
   document.getElementById('najmatRows').innerHTML = rowsHtml || '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No leads match these filters.</td></tr>';
