@@ -33,7 +33,14 @@
      sideways in the installed app. overscroll-behavior-x also stops the
      rubbery side-bounce that made the whole app feel like it was "sliding"
      off its own background instead of feeling stuck in place like a real app. */
-  html{overflow-x:hidden;width:100%;}
+  html{overflow-x:hidden;width:100%;scrollbar-width:thin;scrollbar-color:var(--gold) var(--bg);}
+  /* One clean, thin scrollbar for the whole page — no nested inner scroll regions
+     (the table used to cap its own height and scroll independently, which produced
+     a second scrollbar next to the page's own; it now just grows with the page). */
+  ::-webkit-scrollbar{width:11px;height:11px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:var(--gold);border-radius:20px;border:3px solid var(--bg);}
+  ::-webkit-scrollbar-thumb:hover{background:var(--navy);}
   body{margin:0;font-family:'Manrope',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#241f18;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden;width:100%;overscroll-behavior-x:none;}
   header{background:var(--bg);color:#241f18;padding:18px 30px;box-shadow:none;border-bottom:1px solid var(--border);position:relative;}
   header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.1px;font-family:'Fraunces',Georgia,serif;color:#241f18;}
@@ -87,20 +94,26 @@
   .header-btn-grid .btn-primary:hover{background:var(--navy2);box-shadow:0 3px 10px rgba(109,42,38,.32);}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
   @media (max-width:760px){ .wrap{padding:14px 12px 40px;} }
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-bottom:16px;}
-  .card{background:#fff;border:1px solid var(--border);border-radius:9px;padding:9px 12px;
-    box-shadow:var(--shadow-sm);transition:box-shadow .15s ease,border-color .15s ease;}
-  .card:hover{box-shadow:var(--shadow-md);border-color:var(--sage);}
-  .card .icon{font-size:12px;margin-bottom:2px;opacity:.9;}
-  .card .num{font-size:18px;font-weight:700;color:var(--navy);line-height:1.15;letter-spacing:normal;font-family:'Manrope',sans-serif;}
-  .card .lbl{font-size:9.5px;font-weight:600;color:var(--gray);margin-top:3px;line-height:1.2;text-transform:uppercase;letter-spacing:.25px;}
+  /* Plain "stat row" style — large numbers, thin vertical rule between items, no
+     boxes/shadows around each one. Matches the approved mockup direction rather
+     than the card-grid look (which read as a spreadsheet once several rows of
+     these appeared stacked down the dashboard). */
+  .cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:6px;}
+  .card{background:transparent;border:none;border-right:1px solid var(--border);border-radius:0;
+    padding:2px 26px 2px 2px;margin-right:26px;box-shadow:none;flex:1 1 130px;min-width:110px;
+    transition:opacity .15s ease;cursor:default;}
+  .card:last-child{border-right:none;margin-right:0;}
+  .card:hover{opacity:.8;}
+  .card .icon{display:none;}
+  .card .num{font-size:25px;font-weight:700;color:#241f18;line-height:1.15;letter-spacing:normal;font-family:'Manrope',sans-serif;}
+  .card .lbl{font-size:10px;font-weight:600;color:var(--gray);margin-top:4px;line-height:1.2;text-transform:uppercase;letter-spacing:.3px;}
   .card.warn .num{color:var(--red);}
   .card.soon .num{color:var(--amber);}
   .card.good .num{color:var(--sage);}
-  .card.muted-card{opacity:.75;}
-  .cards.compact{gap:6px;margin-bottom:12px;}
-  .cards.compact .card{padding:7px 10px;}
-  .cards.compact .card .num{font-size:16px;}
+  .card.muted-card{opacity:.6;}
+  .cards.compact{gap:0;margin-bottom:4px;}
+  .cards.compact .card{padding:2px 20px 2px 2px;margin-right:20px;}
+  .cards.compact .card .num{font-size:20px;}
   .toolbar-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--navy);
     margin:14px 0 6px 2px;padding-bottom:4px;border-bottom:2px solid var(--sage-light);display:flex;align-items:center;gap:7px;}
   .toolbar-label:first-of-type{margin-top:0;}
@@ -199,9 +212,11 @@
   .btn.clear-filters{background:#fff;color:var(--clay);border:1.5px solid var(--clay);font-weight:700;margin-left:auto;}
   .btn.clear-filters:hover{background:var(--clay);color:#fff;}
   .btn:disabled{opacity:.55;cursor:default;}
+  .row-actions{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;}
   .btn.small.log-email, .btn.small.log-call{background:#fff;color:var(--navy);border:1px solid var(--border);
-    padding:5px 8px;box-shadow:none;}
+    padding:4px 7px;box-shadow:none;font-size:12px;line-height:1;}
   .btn.small.log-email:hover, .btn.small.log-call:hover{background:var(--sage-light);}
+  .row-actions .btn.small{padding:4px 9px;font-size:11.5px;}
   .activity-log-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
   .activity-date-picker{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--gray);}
   .activity-date-picker input{font-family:'Manrope',sans-serif;font-size:12.5px;padding:6px 9px;
@@ -415,7 +430,7 @@
   /* overflow-x:auto so a many-column table scrolls sideways inside its own box
      on a narrow phone screen, instead of either squeezing every column
      illegibly or breaking out and forcing the whole page to scroll sideways. */
-  .table-wrap{max-height:640px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;
     border-radius:var(--radius);box-shadow:var(--shadow-md);border:1px solid var(--border);}
   .table-wrap table{box-shadow:none;border:none;border-radius:0;}
   @media (max-width:760px){ .table-wrap table{min-width:900px;} }
@@ -635,7 +650,7 @@
         <th style="width:6%">Priority</th>
         <th style="width:8%">Last contact</th>
         <th style="width:8%">Next follow-up</th>
-        <th style="width:7%">Actions</th>
+        <th style="width:11%">Actions</th>
       </tr>
     </thead>
     <tbody id="rows"></tbody>
@@ -2143,10 +2158,12 @@ function renderRows(){
       ? '<span class="pill archived-pill">🗄 Archived</span>'
       : `<span class="pill ${statusClass(r.status)}">${esc(r.status||'Not Contacted')}</span>${r.skip_reason?'<div class="muted" style="margin-top:4px;color:#9a6300;">🔎 '+esc(r.skip_reason)+'</div>':''}`;
     const actionCell = (r.archived || r.deleted)
-      ? `<button class="btn small sage" onclick="restoreRecord(${r.id})">Restore</button> <button class="btn small ghost" onclick="openModal(${r.id})">Open</button>`
-      : `<button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();quickLogContact(${r.id},'Email')">📧</button>
+      ? `<div class="row-actions"><button class="btn small sage" onclick="restoreRecord(${r.id})">Restore</button><button class="btn small ghost" onclick="openModal(${r.id})">Open</button></div>`
+      : `<div class="row-actions">
+         <button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();quickLogContact(${r.id},'Email')">📧</button>
          <button class="btn small log-call" title="Log a call made today" onclick="event.stopPropagation();quickLogContact(${r.id},'Call')">📞</button>
-         <button class="btn small" onclick="openModal(${r.id})">Open</button>`;
+         <button class="btn small" onclick="openModal(${r.id})">Open</button>
+         </div>`;
     const liBtn = r.linkedin_url ? `<a class="li-btn" href="${esc(r.linkedin_url)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.03-1.85-3.03-1.85 0-2.14 1.45-2.14 2.94v5.66H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.38-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13zM7.11 20.45H3.56V9h3.55v11.45z"/></svg>LinkedIn</a>` : '<span class="muted">—</span>';
     return `<tr class="${r.deleted?'is-deleted':(r.archived?'is-archived':'')}">
       <td><div class="company">${esc(r.name)}</div><div class="muted">${esc(r.title||'')}</div></td>
@@ -3364,7 +3381,7 @@ function najmatRenderRows(){
       <td class="${fuClass}">${esc(fuText)}</td>
       <td>${meetingFlag}</td>
       <td>${li}</td>
-      <td>${(r.archived||r.deleted) ? '' : `<button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Email')">📧</button> <button class="btn small log-call" title="Log a call made today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Call')">📞</button> `}<button class="btn small ghost" onclick="openNajmatModal('${r._rid}')">Open</button></td>
+      <td><div class="row-actions">${(r.archived||r.deleted) ? '' : `<button class="btn small log-email" title="Log an email sent today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Email')">📧</button><button class="btn small log-call" title="Log a call made today" onclick="event.stopPropagation();najmatQuickLogContact('${r._rid}','Call')">📞</button>`}<button class="btn small ghost" onclick="openNajmatModal('${r._rid}')">Open</button></div></td>
     </tr>`;
   }).join('');
   document.getElementById('najmatRows').innerHTML = rowsHtml || '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No leads match these filters.</td></tr>';
