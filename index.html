@@ -564,6 +564,7 @@
     <button class="dash-tab" data-tab="alerts" onclick="switchDashboardTab('alerts')">Needs Attention <span class="tab-badge" id="tabCount-alerts">0</span></button>
     <button class="dash-tab" data-tab="company" onclick="switchDashboardTab('company')">By Company <span class="tab-badge" id="tabCount-company">0</span></button>
     <button class="dash-tab" data-tab="activity" onclick="switchDashboardTab('activity')">Activity Log <span class="tab-badge" id="tabCount-activity">0</span></button>
+    <button class="dash-tab" data-tab="automation" onclick="switchDashboardTab('automation')">Automation</button>
     <button class="dash-tab" data-tab="analytics" onclick="switchDashboardTab('analytics')">Analytics</button>
     <button class="dash-tab" data-tab="viewstools" onclick="switchDashboardTab('viewstools')">Views &amp; Tools</button>
   </div>
@@ -578,6 +579,7 @@
   <div class="dash-panel" id="panel-alerts"></div>
   <div class="dash-panel" id="panel-company"></div>
   <div class="dash-panel" id="panel-activity"></div>
+  <div class="dash-panel" id="panel-automation"></div>
   <div class="dash-panel" id="panel-analytics">
     <div class="charts-grid">
       <div class="chart-card"><h3>Conversion funnel</h3><div style="font-size:10.5px;color:var(--gray);margin:-6px 0 6px;">Each bar = contacts currently at that exact stage (not cumulative)</div><div class="chart-inner-lg"><canvas id="rzFunnelChart"></canvas></div></div>
@@ -819,7 +821,7 @@ let showContactedOnly = false;
 // Analytics / Views & Tools) — only one panel is shown at a time, switched by clicking
 // a tab, instead of each section independently expanding in place. Remembers the last
 // tab you had open across visits. Filter contacts stays outside this system entirely.
-const DASH_TABS = ['overview','myqueue','system','alerts','company','activity','analytics','viewstools'];
+const DASH_TABS = ['overview','myqueue','system','alerts','company','activity','automation','analytics','viewstools'];
 let activityLogDate = today();
 function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
@@ -849,7 +851,8 @@ function closeDashboardTab(){
 }
 const DASH_TAB_TITLES = {
   overview:'Overview', myqueue:'My Follow-Up Queue', system:'System Status',
-  alerts:'Needs Attention', company:'By Company', activity:'Activity Log', analytics:'Analytics', viewstools:'Views & Tools'
+  alerts:'Needs Attention', company:'By Company', activity:'Activity Log', automation:'Automation',
+  analytics:'Analytics', viewstools:'Views & Tools'
 };
 function applyDashboardTabState(){
   DASH_TABS.forEach(k=>{
@@ -1187,6 +1190,75 @@ function airtableDelete(rid){
     .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); });
 }
 
+// ============================================================
+// AUTOMATION LOG — one row per day, written by the scheduled
+// LinkedIn outreach job (invites sent, auto follow-ups sent,
+// replies seen, leads auto-archived, live pipeline snapshot).
+// Read-only from the CRM's side: this dashboard tab just shows
+// Mohammad what the automation actually did, so he never has to
+// ask. Same base as Rizmac Contacts, separate table.
+// ============================================================
+const AUTOMATION_LOG_BASE = 'appR8jG9EZtPjUQg7';
+const AUTOMATION_LOG_TABLE = 'tblukSkogO193l8NF';
+let AUTOMATION_LOG = [];
+function automationLogApiBase(){ return 'https://api.airtable.com/v0/' + AUTOMATION_LOG_BASE + '/' + AUTOMATION_LOG_TABLE; }
+function fetchAutomationLog(){
+  let all = [];
+  function page(offset){
+    const url = automationLogApiBase() + '?pageSize=100&sort[0][field]=Date&sort[0][direction]=desc' + (offset ? '&offset='+offset : '');
+    return fetch(url, { headers: authHeaders() })
+      .then(r=>{ if(!r.ok) return r.json().then(e=>{ throw new Error(e.error && e.error.message ? e.error.message : ('HTTP '+r.status)); }); return r.json(); })
+      .then(data=>{ all = all.concat(data.records || []); return data.offset ? page(data.offset) : all; });
+  }
+  return page(null);
+}
+function loadAutomationLog(){
+  if(!AT_TOKEN) return Promise.resolve();
+  return fetchAutomationLog().then(recs=>{
+    AUTOMATION_LOG = recs.map(rec=>{
+      const f = rec.fields || {};
+      return {
+        date: f['Date'] || '', invites_sent: Number(f['Invites Sent'])||0,
+        followups_sent: Number(f['Auto Follow-ups Sent'])||0, replies: Number(f['Replies Received'])||0,
+        archived: Number(f['Leads Archived'])||0, pipeline_value: Number(f['Active Pipeline Value'])||0,
+        active_contacts: Number(f['Active Contacts Total'])||0, notes: f['Notes'] || ''
+      };
+    }).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    renderAutomationPanel();
+  }).catch(e=>{ console.error('Automation Log load failed', e); });
+}
+function renderAutomationPanel(){
+  const panel = document.getElementById('panel-automation');
+  if(!panel) return;
+  if(!AUTOMATION_LOG.length){
+    panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>';
+    return;
+  }
+  const today = AUTOMATION_LOG[0];
+  const last7 = AUTOMATION_LOG.slice(0,7);
+  const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
+  const cards = `
+    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">Invites sent today</div></div>
+    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">Auto follow-ups sent today</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies}</div><div class="lbl">Replies today</div></div>
+    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads auto-archived today</div></div>
+    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(today.pipeline_value)}</div><div class="lbl">Live pipeline value</div></div>
+    <div class="card"><div class="icon">👥</div><div class="num">${today.active_contacts}</div><div class="lbl">Active contacts</div></div>
+  `;
+  const rows = last7.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.replies}</td><td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td></tr>`).join('');
+  panel.innerHTML = `
+    <div class="cards compact">${cards}</div>
+    <div style="margin-top:14px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} invites · ${sum('followups_sent')} follow-ups · ${sum('replies')} replies · ${sum('archived')} archived</div>
+    <div style="overflow-x:auto;margin-top:10px;">
+      <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr style="text-align:left;color:var(--gray);"><th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">Invites</th><th style="padding:6px 8px;">Follow-ups</th><th style="padding:6px 8px;">Replies</th><th style="padding:6px 8px;">Archived</th><th style="padding:6px 8px;">Pipeline</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${today.notes ? `<div class="muted" style="margin-top:10px;">${esc(today.notes)}</div>` : ''}
+  `;
+}
+
 // One-time correction tool for when a whole segment was entered under the wrong
 // tab by mistake (e.g. a Najmat-type manufacturing/CMT-factory segment that got
 // created inside Rizmac instead). Converts each matching Rizmac contact into a
@@ -1378,7 +1450,8 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   meetingPrepNotes:'fldxu1ykAEgdVQm4g', meetingOutcomeNotes:'fld5L9AMlN62l15eV',
   log:'fldcBaPsb5ed9tYtB', dashboardId:'fldTepEzVzofgvW7X',
   inquiryDoc:'fldkaPxGuj8zem8QY', quoteDoc:'fld6VW7MCe802Ic8h', orderDoc:'fldqOB6IW9gqeUsf4',
-  lastContactType:'fld28HxXXLnTf8WXA' };
+  lastContactType:'fld28HxXXLnTf8WXA',
+  autoFollowupCount:'fldfhLcr71mkXtw9G', lastAutoFollowup:'fldpoQFyURlQdMg8G', archivedReason:'fldBA8IkgW5rcWNtj' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1410,7 +1483,10 @@ function fromAirtable(rec){
     record_status: recStatus,
     archived: recStatus === 'Archived',
     deleted: recStatus === 'Deleted',
-    whatsapp_requested: !!f[F.whatsapp]
+    whatsapp_requested: !!f[F.whatsapp],
+    auto_followup_count: Number(f[F.autoFollowupCount]) || 0,
+    last_auto_followup: f[F.lastAutoFollowup] || '',
+    archived_reason: f[F.archivedReason] || ''
   };
 }
 function toAirtableFields(r){
@@ -1451,6 +1527,9 @@ function toAirtableFields(r){
   fields[F.whatsapp] = !!r.whatsapp_requested;
   fields[F.log] = flattenLog(r.conversation_log);
   fields[F.dashboardId] = r.id;
+  if(r.auto_followup_count !== undefined) fields[F.autoFollowupCount] = Number(r.auto_followup_count) || 0;
+  if(r.last_auto_followup) fields[F.lastAutoFollowup] = r.last_auto_followup;
+  if(r.archived_reason) fields[F.archivedReason] = r.archived_reason;
   return fields;
 }
 function pushRecord(r, isNew){
@@ -1481,6 +1560,7 @@ function loadDataFromAirtable(){
     populateFilterOptions();
     applyFilters();
     syncStatus('ok','Synced');
+    loadAutomationLog();
   }).catch(e=>{
     syncStatus('err','Sync failed');
     if(/authoriz|token|permission|not found/i.test(e.message)){
