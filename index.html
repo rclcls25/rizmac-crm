@@ -1221,7 +1221,9 @@ function loadAutomationLog(){
         date: f['Date'] || '', invites_sent: Number(f['Invites Sent'])||0,
         followups_sent: Number(f['Auto Follow-ups Sent'])||0, replies: Number(f['Replies Received'])||0,
         archived: Number(f['Leads Archived'])||0, pipeline_value: Number(f['Active Pipeline Value'])||0,
-        active_contacts: Number(f['Active Contacts Total'])||0, notes: f['Notes'] || ''
+        active_contacts: Number(f['Active Contacts Total'])||0, notes: f['Notes'] || '',
+        emails_sent: Number(f['Emails Sent'])||0, email_followups_sent: Number(f['Email Follow-ups Sent'])||0,
+        email_replies: Number(f['Email Replies Received'])||0
       };
     }).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     renderAutomationPanel();
@@ -1238,20 +1240,22 @@ function renderAutomationPanel(){
   const last7 = AUTOMATION_LOG.slice(0,7);
   const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
   const cards = `
-    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">Invites sent today</div></div>
-    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">Auto follow-ups sent today</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies}</div><div class="lbl">Replies today</div></div>
+    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">LinkedIn invites sent today</div></div>
+    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">LinkedIn follow-ups sent today</div></div>
+    <div class="card good"><div class="icon">✉️</div><div class="num">${today.emails_sent}</div><div class="lbl">Emails sent today</div></div>
+    <div class="card"><div class="icon">📧</div><div class="num">${today.email_followups_sent}</div><div class="lbl">Email follow-ups sent today</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies + today.email_replies}</div><div class="lbl">Replies today (LinkedIn + email)</div></div>
     <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads auto-archived today</div></div>
     <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(today.pipeline_value)}</div><div class="lbl">Live pipeline value</div></div>
     <div class="card"><div class="icon">👥</div><div class="num">${today.active_contacts}</div><div class="lbl">Active contacts</div></div>
   `;
-  const rows = last7.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.replies}</td><td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td></tr>`).join('');
+  const rows = last7.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.emails_sent}</td><td>${d.email_followups_sent}</td><td>${d.replies + d.email_replies}</td><td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td></tr>`).join('');
   panel.innerHTML = `
     <div class="cards compact">${cards}</div>
-    <div style="margin-top:14px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} invites · ${sum('followups_sent')} follow-ups · ${sum('replies')} replies · ${sum('archived')} archived</div>
+    <div style="margin-top:14px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LI invites · ${sum('followups_sent')} LI follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} replies · ${sum('archived')} archived</div>
     <div style="overflow-x:auto;margin-top:10px;">
       <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
-        <thead><tr style="text-align:left;color:var(--gray);"><th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">Invites</th><th style="padding:6px 8px;">Follow-ups</th><th style="padding:6px 8px;">Replies</th><th style="padding:6px 8px;">Archived</th><th style="padding:6px 8px;">Pipeline</th></tr></thead>
+        <thead><tr style="text-align:left;color:var(--gray);"><th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">LI Invites</th><th style="padding:6px 8px;">LI Follow-ups</th><th style="padding:6px 8px;">Emails</th><th style="padding:6px 8px;">Email Follow-ups</th><th style="padding:6px 8px;">Replies</th><th style="padding:6px 8px;">Archived</th><th style="padding:6px 8px;">Pipeline</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -1451,7 +1455,9 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   log:'fldcBaPsb5ed9tYtB', dashboardId:'fldTepEzVzofgvW7X',
   inquiryDoc:'fldkaPxGuj8zem8QY', quoteDoc:'fld6VW7MCe802Ic8h', orderDoc:'fldqOB6IW9gqeUsf4',
   lastContactType:'fld28HxXXLnTf8WXA',
-  autoFollowupCount:'fldfhLcr71mkXtw9G', lastAutoFollowup:'fldpoQFyURlQdMg8G', archivedReason:'fldBA8IkgW5rcWNtj' };
+  autoFollowupCount:'fldfhLcr71mkXtw9G', lastAutoFollowup:'fldpoQFyURlQdMg8G', archivedReason:'fldBA8IkgW5rcWNtj',
+  emailOutreachSent:'fldcDGv3bMjpu3jDA', emailOutreachDate:'fldvq4OCgO8lPinCM',
+  emailFollowupCount:'fldh1uOxEdva2VOqZ', lastEmailFollowup:'fldZr3rPrYBAWMUqt' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1486,7 +1492,11 @@ function fromAirtable(rec){
     whatsapp_requested: !!f[F.whatsapp],
     auto_followup_count: Number(f[F.autoFollowupCount]) || 0,
     last_auto_followup: f[F.lastAutoFollowup] || '',
-    archived_reason: f[F.archivedReason] || ''
+    archived_reason: f[F.archivedReason] || '',
+    email_outreach_sent: !!f[F.emailOutreachSent],
+    email_outreach_date: f[F.emailOutreachDate] || '',
+    email_followup_count: Number(f[F.emailFollowupCount]) || 0,
+    last_email_followup: f[F.lastEmailFollowup] || ''
   };
 }
 function toAirtableFields(r){
@@ -1530,6 +1540,10 @@ function toAirtableFields(r){
   if(r.auto_followup_count !== undefined) fields[F.autoFollowupCount] = Number(r.auto_followup_count) || 0;
   if(r.last_auto_followup) fields[F.lastAutoFollowup] = r.last_auto_followup;
   if(r.archived_reason) fields[F.archivedReason] = r.archived_reason;
+  if(r.email_outreach_sent !== undefined) fields[F.emailOutreachSent] = !!r.email_outreach_sent;
+  if(r.email_outreach_date) fields[F.emailOutreachDate] = r.email_outreach_date;
+  if(r.email_followup_count !== undefined) fields[F.emailFollowupCount] = Number(r.email_followup_count) || 0;
+  if(r.last_email_followup) fields[F.lastEmailFollowup] = r.last_email_followup;
   return fields;
 }
 function pushRecord(r, isNew){
