@@ -1259,11 +1259,17 @@ function renderAutomationPanel(){
   const last7 = AUTOMATION_LOG.slice(0,7);
   const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
   const totalRepliesToday = today.replies + today.email_replies;
+  // Quoted-value is computed live from the current CRM data (Status = "Quoted" only),
+  // not from the once-a-day automation log snapshot — that way it's always exactly
+  // right-now-accurate and never drifts from what's on screen elsewhere. It deliberately
+  // excludes "Ordered" (closed/won) deals: once a deal closes, its value belongs in the
+  // Closed Deals tab, not here — a contact is either still being quoted, or it's done.
+  const quotedPipelineValue = DATA.filter(r=>!r.archived && !r.deleted && r.status==='Quoted').reduce((s,r)=>s+(Number(r.deal_value)||0),0);
 
   // Top row: the three numbers Mohammad actually cares about at a glance —
   // what the automation is worth right now, not how it works.
   const snapshot = `
-    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(today.pipeline_value)}</div><div class="lbl">Live pipeline value</div></div>
+    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(quotedPipelineValue)}</div><div class="lbl">Quoted pipeline value</div></div>
     <div class="card"><div class="icon">👥</div><div class="num">${today.active_contacts}</div><div class="lbl">Active contacts</div></div>
     <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesToday}</div><div class="lbl">Replies today</div></div>
     <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads archived today</div></div>
@@ -1291,7 +1297,7 @@ function renderAutomationPanel(){
 
   panel.innerHTML = `
     <div class="cards compact">${snapshot}</div>
-    <div class="muted" style="margin-top:6px;font-size:11.5px;">Live pipeline value = the Deal Value already saved on every active (non-archived) contact — not something the automation adds on its own; it just totals what's already in your CRM, live.</div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px;">Quoted pipeline value = the Deal Value on every contact currently at the "Quoted" stage — deals still waiting on a decision. Once a deal closes, it drops out of this number and its value shows instead on the <a href="#" onclick="event.preventDefault();switchDashboardTab('closed');return false;" style="color:var(--navy);text-decoration:underline;">Closed Deals</a> tab.</div>
 
     <div class="automation-section-head">🤝 LinkedIn outreach</div>
     <div class="cards compact">${linkedinCards}</div>
@@ -1308,7 +1314,7 @@ function renderAutomationPanel(){
             <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">LinkedIn</th>
             <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">Email</th>
             <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Archived</th>
-            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Pipeline</th>
+            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Quoted Value</th>
           </tr>
           <tr style="text-align:left;color:var(--gray);font-size:11px;">
             <th style="padding:2px 8px;">Invites</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
