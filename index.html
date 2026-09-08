@@ -1256,6 +1256,53 @@ function loadAutomationLog(){
     renderAutomationPanel();
   }).catch(e=>{ console.error('Automation Log load failed', e); automationLogLoaded = true; renderAutomationPanel(); });
 }
+// Which day's snapshot the top cards + LinkedIn/Email cards are showing — defaults to
+// the most recent logged day ("today"), but the date picker below lets Mohammad step
+// back to any earlier day the automation has a row for.
+let automationSnapshotDate = null;
+// Which month the history table is filtered to — defaults to the current month; 'all'
+// shows every logged day. Together with the date picker above, this is what answers
+// "per day I can check, monthly I can check."
+let automationTrendMonth = null;
+function setAutomationSnapshotDate(v){ automationSnapshotDate = v || null; renderAutomationPanel(); }
+function setAutomationTrendMonth(v){ automationTrendMonth = v || 'all'; renderAutomationPanel(); }
+// Maps a clickable counter to the per-contact date field that produced it, so clicking
+// "12 new invites sent" can actually list who those 12 were instead of just the number.
+const AUTOMATION_METRIC_FIELDS = {
+  li_invites: { field:'linkedin_invite_date', title:'LinkedIn invites sent', icon:'🤝' },
+  li_followups: { field:'last_auto_followup', title:'LinkedIn follow-ups sent', icon:'🔁',
+    note:'Shows contacts whose most recent LinkedIn follow-up nudge landed on this date — if a contact was nudged again on a later day, they will show up under that later date instead.' },
+  email_sent: { field:'email_outreach_date', title:'First emails sent', icon:'✉️' },
+  email_followups: { field:'last_email_followup', title:'Email follow-ups sent', icon:'📧',
+    note:'Shows contacts whose most recent email follow-up landed on this date — if a contact was followed up again on a later day, they will show up under that later date instead.' }
+};
+function showAutomationRecipients(dateStr, metricKey){
+  const meta = AUTOMATION_METRIC_FIELDS[metricKey];
+  if(!meta) return;
+  const list = DATA.filter(r=>!r.deleted && r[meta.field]===dateStr)
+    .sort((a,b)=>(a.company||'').localeCompare(b.company||''));
+  const rowsHtml = list.map(r=>`<tr style="cursor:pointer;" onclick="openModal(${r.id});">
+      <td style="padding:7px 8px;border-bottom:1px solid var(--border);">${esc(r.company||'—')}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid var(--border);">${esc(r.name||'—')}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid var(--border);">${esc(r.status||'—')}</td>
+    </tr>`).join('');
+  modalReturnTo = null;
+  document.getElementById('modalBody').innerHTML = `
+    <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
+    <h2>${meta.icon} ${esc(meta.title)}</h2>
+    <div class="sub">${esc(dateStr)} — ${list.length} contact${list.length===1?'':'s'}. Click any row to open that contact's full record.</div>
+    ${meta.note ? `<div class="muted" style="margin-top:6px;font-size:11.5px;">${esc(meta.note)}</div>` : ''}
+    <div style="max-height:55vh;overflow-y:auto;margin-top:12px;border:1px solid var(--border);border-radius:10px;">
+      ${list.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="text-align:left;color:var(--gray);"><th style="padding:7px 8px;">Company</th><th style="padding:7px 8px;">Contact</th><th style="padding:7px 8px;">Status</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>` : '<p class="muted" style="padding:14px;">No contacts recorded against this date.</p>'}
+    </div>
+    <div class="modal-actions"><div></div><div><button class="btn" onclick="closeModal()">Close</button></div></div>
+  `;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
+}
 function renderAutomationPanel(){
   const panel = document.getElementById('panel-automation');
   if(!panel) return;
@@ -1265,10 +1312,13 @@ function renderAutomationPanel(){
       : '<div class="muted" style="padding:10px 2px;">Loading automation data…</div>';
     return;
   }
-  const today = AUTOMATION_LOG[0];
+  // The snapshot cards show whichever day is picked (defaults to the most recent
+  // logged day) — falls back to the latest row if the picked date has no row.
+  const snap = AUTOMATION_LOG.find(d=>d.date===automationSnapshotDate) || AUTOMATION_LOG[0];
+  const snapDate = snap.date;
   const last7 = AUTOMATION_LOG.slice(0,7);
   const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
-  const totalRepliesToday = today.replies + today.email_replies;
+  const totalRepliesSnap = snap.replies + snap.email_replies;
   // Quoted-value is computed live from the current CRM data (Status = "Quoted" only),
   // not from the once-a-day automation log snapshot — that way it's always exactly
   // right-now-accurate and never drifts from what's on screen elsewhere. It deliberately
@@ -1276,36 +1326,60 @@ function renderAutomationPanel(){
   // Closed Deals tab, not here — a contact is either still being quoted, or it's done.
   const quotedPipelineValue = DATA.filter(r=>!r.archived && !r.deleted && r.status==='Quoted').reduce((s,r)=>s+(Number(r.deal_value)||0),0);
 
-  // Top row: the three numbers Mohammad actually cares about at a glance —
-  // what the automation is worth right now, not how it works.
+  // Every date the automation actually has a row for, newest first — feeds both the
+  // day picker and the month filter below.
+  const allDates = AUTOMATION_LOG.map(d=>d.date).filter(Boolean);
+  const dateOptions = allDates.map(d=>`<option value="${esc(d)}" ${d===snapDate?'selected':''}>${esc(d)}${d===AUTOMATION_LOG[0].date?' (latest)':''}</option>`).join('');
+  const isToday = snapDate === AUTOMATION_LOG[0].date;
+
+  // Top row: the numbers Mohammad actually cares about at a glance for the picked day.
   const snapshot = `
     <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(quotedPipelineValue)}</div><div class="lbl">Quoted pipeline value</div></div>
-    <div class="card"><div class="icon">👥</div><div class="num">${today.active_contacts}</div><div class="lbl">Active contacts</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesToday}</div><div class="lbl">Replies today</div></div>
-    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads archived today</div></div>
+    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesSnap}</div><div class="lbl">Replies ${isToday?'today':'this day'}</div></div>
+    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${snap.archived}</div><div class="lbl">Leads archived ${isToday?'today':'this day'}</div></div>
   `;
 
-  // Two channel sections, each self-contained, so LinkedIn numbers are never
-  // mixed into the same tile as Email numbers.
+  // Two channel sections, each self-contained, so LinkedIn numbers are never mixed
+  // into the same tile as Email numbers. The invite/follow-up/first-email counters
+  // are clickable — they open the actual list of who, not just the count.
   const linkedinCards = `
-    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">New invites sent today</div></div>
-    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">Follow-ups sent today</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies}</div><div class="lbl">Replies today</div></div>
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_invites')"><div class="icon">🤝</div><div class="num">${snap.invites_sent}</div><div class="lbl">New invites sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_followups')"><div class="icon">🔁</div><div class="num">${snap.followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
   `;
   const emailCards = `
-    <div class="card good"><div class="icon">✉️</div><div class="num">${today.emails_sent}</div><div class="lbl">First emails sent today</div></div>
-    <div class="card"><div class="icon">📧</div><div class="num">${today.email_followups_sent}</div><div class="lbl">Follow-ups sent today</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${today.email_replies}</div><div class="lbl">Replies today</div></div>
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_sent')"><div class="icon">✉️</div><div class="num">${snap.emails_sent}</div><div class="lbl">First emails sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_followups')"><div class="icon">📧</div><div class="num">${snap.email_followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.email_replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
   `;
 
-  const rows = last7.map(d=>`<tr>
-      <td>${esc(d.date)}</td>
-      <td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.replies}</td>
-      <td>${d.emails_sent}</td><td>${d.email_followups_sent}</td><td>${d.email_replies}</td>
-      <td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td>
+  // Month filter for the history table below — every month that actually has a
+  // logged row, newest first, plus "All time".
+  const months = [...new Set(allDates.map(d=>d.slice(0,7)))].sort().reverse();
+  const curMonth = today().slice(0,7);
+  if(automationTrendMonth===null) automationTrendMonth = months.includes(curMonth) ? curMonth : (months[0] || 'all');
+  const monthLabel = m => { const [y,mo]=m.split('-'); return new Date(Number(y),Number(mo)-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}); };
+  const monthOptions = `<option value="all" ${automationTrendMonth==='all'?'selected':''}>All time</option>` +
+    months.map(m=>`<option value="${m}" ${m===automationTrendMonth?'selected':''}>${esc(monthLabel(m))}</option>`).join('');
+  const trendRows = automationTrendMonth==='all' ? AUTOMATION_LOG : AUTOMATION_LOG.filter(d=>(d.date||'').slice(0,7)===automationTrendMonth);
+
+  const rows = trendRows.map(d=>`<tr>
+      <td style="padding:6px 8px;">${esc(d.date)}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_invites')">${d.invites_sent}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_followups')">${d.followups_sent}</td>
+      <td style="padding:6px 8px;">${d.replies}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_sent')">${d.emails_sent}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_followups')">${d.email_followups_sent}</td>
+      <td style="padding:6px 8px;">${d.email_replies}</td>
+      <td style="padding:6px 8px;">${d.archived}</td><td style="padding:6px 8px;">${fmtMoney(d.pipeline_value)}</td>
     </tr>`).join('');
 
   panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <label class="muted" style="font-size:12px;">Showing:</label>
+      <select onchange="setAutomationSnapshotDate(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${dateOptions}</select>
+    </div>
     <div class="cards compact">${snapshot}</div>
     <div class="muted" style="margin-top:6px;font-size:11.5px;">Quoted pipeline value = the Deal Value on every contact currently at the "Quoted" stage — deals still waiting on a decision. Once a deal closes, it drops out of this number and its value shows instead on the <a href="#" onclick="event.preventDefault();switchDashboardTab('closed');return false;" style="color:var(--navy);text-decoration:underline;">Closed Deals</a> tab.</div>
 
@@ -1316,6 +1390,11 @@ function renderAutomationPanel(){
     <div class="cards compact">${emailCards}</div>
 
     <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
+      <label class="muted" style="font-size:12px;">History for:</label>
+      <select onchange="setAutomationTrendMonth(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${monthOptions}</select>
+      <span class="muted" style="font-size:11.5px;">Click any underlined number below to see exactly who.</span>
+    </div>
     <div style="overflow-x:auto;margin-top:10px;">
       <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
@@ -1331,10 +1410,10 @@ function renderAutomationPanel(){
             <th style="padding:2px 8px;">Sent</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rows || '<tr><td colspan="9" style="padding:12px 8px;" class="muted">No logged days in this month.</td></tr>'}</tbody>
       </table>
     </div>
-    ${today.notes ? `<div class="muted" style="margin-top:10px;">📝 ${esc(today.notes)}</div>` : ''}
+    ${snap.notes ? `<div class="muted" style="margin-top:10px;">📝 ${esc(snap.notes)}</div>` : ''}
   `;
 }
 
@@ -1532,7 +1611,8 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   lastContactType:'fld28HxXXLnTf8WXA',
   autoFollowupCount:'fldfhLcr71mkXtw9G', lastAutoFollowup:'fldpoQFyURlQdMg8G', archivedReason:'fldBA8IkgW5rcWNtj',
   emailOutreachSent:'fldcDGv3bMjpu3jDA', emailOutreachDate:'fldvq4OCgO8lPinCM',
-  emailFollowupCount:'fldh1uOxEdva2VOqZ', lastEmailFollowup:'fldZr3rPrYBAWMUqt' };
+  emailFollowupCount:'fldh1uOxEdva2VOqZ', lastEmailFollowup:'fldZr3rPrYBAWMUqt',
+  linkedinInviteDate:'fldM6nEIkWp1Rmjqq' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1571,7 +1651,8 @@ function fromAirtable(rec){
     email_outreach_sent: !!f[F.emailOutreachSent],
     email_outreach_date: f[F.emailOutreachDate] || '',
     email_followup_count: Number(f[F.emailFollowupCount]) || 0,
-    last_email_followup: f[F.lastEmailFollowup] || ''
+    last_email_followup: f[F.lastEmailFollowup] || '',
+    linkedin_invite_date: f[F.linkedinInviteDate] || ''
   };
 }
 function toAirtableFields(r){
