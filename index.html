@@ -100,6 +100,13 @@
     border:none;border-right:1px solid rgba(255,255,255,.22);border-radius:0;
     padding:7px 12px;font-size:12.5px;box-shadow:none;}
   .header-btn-grid .btn-primary:hover{background:var(--navy2);}
+  /* The toolbar strip itself is rounded (10px) with 2px padding, but every button
+     inside it is a plain square (border-radius:0) — right for the buttons in the
+     middle, but the first and last buttons then sit with a hard square corner
+     right next to the strip's own rounded corner, which reads as a mismatch/seam.
+     Round just those two outer corners on the first/last child to match. */
+  .header-actions-row > :first-child{border-radius:8px 0 0 8px;}
+  .header-actions-row > :last-child{border-radius:0 8px 8px 0;}
   .wrap{padding:22px 26px 60px;max-width:1800px;margin:0 auto;}
   @media (max-width:760px){ .wrap{padding:14px 12px 40px;} }
   /* Plain "stat row" style — large numbers, thin vertical rule between items, no
@@ -186,7 +193,10 @@
      designed palette). All four now share the same gold-accented card style;
      the label text is what tells them apart, not the color. */
   .tool-group{display:flex;flex-direction:column;gap:7px;background:#fbf9f2;border:1px solid var(--border);
-    border-left:3px solid var(--gold);border-radius:9px;padding:9px 12px;box-shadow:var(--shadow-sm);}
+    border-radius:9px;padding:9px 12px;box-shadow:var(--shadow-sm);}
+  .automation-section-head{font-size:13px;font-weight:700;color:var(--navy);margin:18px 0 8px;
+    padding-top:12px;border-top:1px solid var(--border);}
+  .automation-section-head:first-of-type{border-top:none;padding-top:0;}
   .tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:16px;}
   .tool-group-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--navy);margin:0 0 1px 1px;}
   .tool-group-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
@@ -368,7 +378,7 @@
      section shares one consistent card look — a plain neutral background with
      a single gold left accent bar — instead of the old rotating rainbow of
      6 unrelated colors, which fought with the rest of the maroon/gold palette. */
-  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-left:4px solid var(--gold);border-radius:12px;padding:11px 14px;margin:0;}
+  .modal-section{background:#fbfcfa;border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin:0;}
   /* Native <details>/<summary> used for the Meeting and Notes & History
      sections — a real collapse/expand, no extra JS needed, and it keeps the
      exact same section look (colored card, header row) whether open or
@@ -624,6 +634,7 @@
     </div>
   </div>
 
+  <div id="rizmacContactsSection">
   <div class="toolbar-label">Filter contacts</div>
   <div class="toolbar">
     <input type="text" id="search" placeholder="Search name, title, company…" oninput="applyFilters()">
@@ -688,6 +699,7 @@
       </select>
       per page
     </label>
+  </div>
   </div>
 
   <div class="footer-note" id="rizmacFooterNote">Rizmac CRM — live-synced. Changes save automatically in the background.</div>
@@ -866,6 +878,11 @@ function applyDashboardTabState(){
   const title = document.getElementById('dashPanelTitle');
   if(head) head.style.display = activeDashboardTab ? 'flex' : 'none';
   if(title) title.textContent = activeDashboardTab ? (DASH_TAB_TITLES[activeDashboardTab]||'') : '';
+  // Automation and Activity Log are pure reports, not about browsing prospects —
+  // hide the filter bar + contacts table while either is open so the report is
+  // the whole screen, not squeezed above a leads list that isn't relevant to it.
+  const contactsSection = document.getElementById('rizmacContactsSection');
+  if(contactsSection) contactsSection.style.display = (activeDashboardTab==='automation' || activeDashboardTab==='activity') ? 'none' : '';
 }
 let PAGE_SIZE = 50;
 function setPageSize(v){ PAGE_SIZE = parseInt(v,10)||50; page = 1; renderRows(); }
@@ -1239,27 +1256,67 @@ function renderAutomationPanel(){
   const today = AUTOMATION_LOG[0];
   const last7 = AUTOMATION_LOG.slice(0,7);
   const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
-  const cards = `
-    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">LinkedIn invites sent today</div></div>
-    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">LinkedIn follow-ups sent today</div></div>
-    <div class="card good"><div class="icon">✉️</div><div class="num">${today.emails_sent}</div><div class="lbl">Emails sent today</div></div>
-    <div class="card"><div class="icon">📧</div><div class="num">${today.email_followups_sent}</div><div class="lbl">Email follow-ups sent today</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies + today.email_replies}</div><div class="lbl">Replies today (LinkedIn + email)</div></div>
-    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads auto-archived today</div></div>
+  const totalRepliesToday = today.replies + today.email_replies;
+
+  // Top row: the three numbers Mohammad actually cares about at a glance —
+  // what the automation is worth right now, not how it works.
+  const snapshot = `
     <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(today.pipeline_value)}</div><div class="lbl">Live pipeline value</div></div>
     <div class="card"><div class="icon">👥</div><div class="num">${today.active_contacts}</div><div class="lbl">Active contacts</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesToday}</div><div class="lbl">Replies today</div></div>
+    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${today.archived}</div><div class="lbl">Leads archived today</div></div>
   `;
-  const rows = last7.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.emails_sent}</td><td>${d.email_followups_sent}</td><td>${d.replies + d.email_replies}</td><td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td></tr>`).join('');
+
+  // Two channel sections, each self-contained, so LinkedIn numbers are never
+  // mixed into the same tile as Email numbers.
+  const linkedinCards = `
+    <div class="card good"><div class="icon">🤝</div><div class="num">${today.invites_sent}</div><div class="lbl">New invites sent today</div></div>
+    <div class="card"><div class="icon">🔁</div><div class="num">${today.followups_sent}</div><div class="lbl">Follow-ups sent today</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${today.replies}</div><div class="lbl">Replies today</div></div>
+  `;
+  const emailCards = `
+    <div class="card good"><div class="icon">✉️</div><div class="num">${today.emails_sent}</div><div class="lbl">First emails sent today</div></div>
+    <div class="card"><div class="icon">📧</div><div class="num">${today.email_followups_sent}</div><div class="lbl">Follow-ups sent today</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${today.email_replies}</div><div class="lbl">Replies today</div></div>
+  `;
+
+  const rows = last7.map(d=>`<tr>
+      <td>${esc(d.date)}</td>
+      <td>${d.invites_sent}</td><td>${d.followups_sent}</td><td>${d.replies}</td>
+      <td>${d.emails_sent}</td><td>${d.email_followups_sent}</td><td>${d.email_replies}</td>
+      <td>${d.archived}</td><td>${fmtMoney(d.pipeline_value)}</td>
+    </tr>`).join('');
+
   panel.innerHTML = `
-    <div class="cards compact">${cards}</div>
-    <div style="margin-top:14px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LI invites · ${sum('followups_sent')} LI follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} replies · ${sum('archived')} archived</div>
+    <div class="cards compact">${snapshot}</div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px;">Live pipeline value = the Deal Value already saved on every active (non-archived) contact — not something the automation adds on its own; it just totals what's already in your CRM, live.</div>
+
+    <div class="automation-section-head">🤝 LinkedIn outreach</div>
+    <div class="cards compact">${linkedinCards}</div>
+
+    <div class="automation-section-head">✉️ Email outreach <span class="muted" style="font-weight:400;font-size:11.5px;">— first emails always wait for your go-ahead; only follow-ups and replies happen on their own</span></div>
+    <div class="cards compact">${emailCards}</div>
+
+    <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
     <div style="overflow-x:auto;margin-top:10px;">
       <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
-        <thead><tr style="text-align:left;color:var(--gray);"><th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">LI Invites</th><th style="padding:6px 8px;">LI Follow-ups</th><th style="padding:6px 8px;">Emails</th><th style="padding:6px 8px;">Email Follow-ups</th><th style="padding:6px 8px;">Replies</th><th style="padding:6px 8px;">Archived</th><th style="padding:6px 8px;">Pipeline</th></tr></thead>
+        <thead>
+          <tr style="text-align:left;color:var(--gray);">
+            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Date</th>
+            <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">LinkedIn</th>
+            <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">Email</th>
+            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Archived</th>
+            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Pipeline</th>
+          </tr>
+          <tr style="text-align:left;color:var(--gray);font-size:11px;">
+            <th style="padding:2px 8px;">Invites</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
+            <th style="padding:2px 8px;">Sent</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
+          </tr>
+        </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    ${today.notes ? `<div class="muted" style="margin-top:10px;">${esc(today.notes)}</div>` : ''}
+    ${today.notes ? `<div class="muted" style="margin-top:10px;">📝 ${esc(today.notes)}</div>` : ''}
   `;
 }
 
