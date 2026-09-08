@@ -591,7 +591,7 @@
   <div class="dash-panel" id="panel-company"></div>
   <div class="dash-panel" id="panel-closed"></div>
   <div class="dash-panel" id="panel-activity"></div>
-  <div class="dash-panel" id="panel-automation"></div>
+  <div class="dash-panel" id="panel-automation"><div class="muted" style="padding:10px 2px;">Loading automation data…</div></div>
   <div class="dash-panel" id="panel-analytics">
     <div class="charts-grid">
       <div class="chart-card"><h3>Conversion funnel</h3><div style="font-size:10.5px;color:var(--gray);margin:-6px 0 6px;">Each bar = contacts currently at that exact stage (not cumulative)</div><div class="chart-inner-lg"><canvas id="rzFunnelChart"></canvas></div></div>
@@ -885,6 +885,12 @@ function applyDashboardTabState(){
   // report is the whole screen, not squeezed above a leads list that isn't relevant to it.
   const contactsSection = document.getElementById('rizmacContactsSection');
   if(contactsSection) contactsSection.style.display = (activeDashboardTab==='automation' || activeDashboardTab==='activity' || activeDashboardTab==='closed') ? 'none' : '';
+  // Landing straight on the Automation tab (remembered from last visit) used to show a
+  // completely blank panel until the separate Automation Log fetch finished — on a slow
+  // connection that could look like the page was broken. Render immediately with whatever
+  // we have (a "loading" placeholder if the log hasn't arrived yet, real data if it has);
+  // loadAutomationLog() will call this again once the fetch resolves to fill in real data.
+  if(activeDashboardTab==='automation' && typeof renderAutomationPanel==='function') renderAutomationPanel();
 }
 let PAGE_SIZE = 50;
 function setPageSize(v){ PAGE_SIZE = parseInt(v,10)||50; page = 1; renderRows(); }
@@ -1220,6 +1226,7 @@ function airtableDelete(rid){
 const AUTOMATION_LOG_BASE = 'appR8jG9EZtPjUQg7';
 const AUTOMATION_LOG_TABLE = 'tblukSkogO193l8NF';
 let AUTOMATION_LOG = [];
+let automationLogLoaded = false;
 function automationLogApiBase(){ return 'https://api.airtable.com/v0/' + AUTOMATION_LOG_BASE + '/' + AUTOMATION_LOG_TABLE; }
 function fetchAutomationLog(){
   let all = [];
@@ -1245,14 +1252,17 @@ function loadAutomationLog(){
         email_replies: Number(f['Email Replies Received'])||0
       };
     }).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    automationLogLoaded = true;
     renderAutomationPanel();
-  }).catch(e=>{ console.error('Automation Log load failed', e); });
+  }).catch(e=>{ console.error('Automation Log load failed', e); automationLogLoaded = true; renderAutomationPanel(); });
 }
 function renderAutomationPanel(){
   const panel = document.getElementById('panel-automation');
   if(!panel) return;
   if(!AUTOMATION_LOG.length){
-    panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>';
+    panel.innerHTML = automationLogLoaded
+      ? '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>'
+      : '<div class="muted" style="padding:10px 2px;">Loading automation data…</div>';
     return;
   }
   const today = AUTOMATION_LOG[0];
