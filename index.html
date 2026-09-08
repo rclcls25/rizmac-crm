@@ -573,6 +573,7 @@
     <button class="dash-tab" data-tab="system" onclick="switchDashboardTab('system')">System Status <span class="tab-badge" id="tabCount-system">0</span></button>
     <button class="dash-tab" data-tab="alerts" onclick="switchDashboardTab('alerts')">Needs Attention <span class="tab-badge" id="tabCount-alerts">0</span></button>
     <button class="dash-tab" data-tab="company" onclick="switchDashboardTab('company')">By Company <span class="tab-badge" id="tabCount-company">0</span></button>
+    <button class="dash-tab" data-tab="closed" onclick="switchDashboardTab('closed')">Closed Deals <span class="tab-badge" id="tabCount-closed">0</span></button>
     <button class="dash-tab" data-tab="activity" onclick="switchDashboardTab('activity')">Activity Log <span class="tab-badge" id="tabCount-activity">0</span></button>
     <button class="dash-tab" data-tab="automation" onclick="switchDashboardTab('automation')">Automation</button>
     <button class="dash-tab" data-tab="analytics" onclick="switchDashboardTab('analytics')">Analytics</button>
@@ -588,6 +589,7 @@
   <div class="dash-panel" id="panel-system"></div>
   <div class="dash-panel" id="panel-alerts"></div>
   <div class="dash-panel" id="panel-company"></div>
+  <div class="dash-panel" id="panel-closed"></div>
   <div class="dash-panel" id="panel-activity"></div>
   <div class="dash-panel" id="panel-automation"></div>
   <div class="dash-panel" id="panel-analytics">
@@ -833,7 +835,7 @@ let showContactedOnly = false;
 // Analytics / Views & Tools) — only one panel is shown at a time, switched by clicking
 // a tab, instead of each section independently expanding in place. Remembers the last
 // tab you had open across visits. Filter contacts stays outside this system entirely.
-const DASH_TABS = ['overview','myqueue','system','alerts','company','activity','automation','analytics','viewstools'];
+const DASH_TABS = ['overview','myqueue','system','alerts','company','closed','activity','automation','analytics','viewstools'];
 let activityLogDate = today();
 function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
@@ -863,7 +865,7 @@ function closeDashboardTab(){
 }
 const DASH_TAB_TITLES = {
   overview:'Overview', myqueue:'My Follow-Up Queue', system:'System Status',
-  alerts:'Needs Attention', company:'By Company', activity:'Activity Log', automation:'Automation',
+  alerts:'Needs Attention', company:'By Company', closed:'Closed Deals', activity:'Activity Log', automation:'Automation',
   analytics:'Analytics', viewstools:'Views & Tools'
 };
 function applyDashboardTabState(){
@@ -878,11 +880,11 @@ function applyDashboardTabState(){
   const title = document.getElementById('dashPanelTitle');
   if(head) head.style.display = activeDashboardTab ? 'flex' : 'none';
   if(title) title.textContent = activeDashboardTab ? (DASH_TAB_TITLES[activeDashboardTab]||'') : '';
-  // Automation and Activity Log are pure reports, not about browsing prospects —
-  // hide the filter bar + contacts table while either is open so the report is
-  // the whole screen, not squeezed above a leads list that isn't relevant to it.
+  // Automation, Activity Log, and Closed Deals are pure reports, not about browsing
+  // prospects — hide the filter bar + contacts table while any of them is open so the
+  // report is the whole screen, not squeezed above a leads list that isn't relevant to it.
   const contactsSection = document.getElementById('rizmacContactsSection');
-  if(contactsSection) contactsSection.style.display = (activeDashboardTab==='automation' || activeDashboardTab==='activity') ? 'none' : '';
+  if(contactsSection) contactsSection.style.display = (activeDashboardTab==='automation' || activeDashboardTab==='activity' || activeDashboardTab==='closed') ? 'none' : '';
 }
 let PAGE_SIZE = 50;
 function setPageSize(v){ PAGE_SIZE = parseInt(v,10)||50; page = 1; renderRows(); }
@@ -1891,9 +1893,63 @@ function renderCards(){
   const meetingSoonToggleBtn = document.getElementById('meetingSoonToggleBtn');
   if(meetingSoonToggleBtn) meetingSoonToggleBtn.classList.toggle('toggle-on', showMeetingSoonOnly);
   renderCompanyPanel(active);
+  renderClosedDealsPanel(active);
   renderActivityPanel(active);
   renderRizmacCharts(active);
   updateTodoBadgeRz();
+}
+// "Closed Deals" — every contact whose Status is "Ordered" (a finalized, won deal),
+// with the numbers Mohammad actually wants at a glance: how many, how much, and which
+// company/contact/reference each one is, newest first. Kept as its own report tab
+// (like Automation/Activity Log) instead of buried inside a status filter, since a
+// closed deal is the single most important thing in the whole CRM.
+function renderClosedDealsPanel(active){
+  const el = document.getElementById('panel-closed');
+  if(!el) return;
+  const deals = active.filter(r=>r.status==='Ordered').slice().sort((a,b)=>{
+    const da = a.stage_entered_on || a.last_contact || '';
+    const db = b.stage_entered_on || b.last_contact || '';
+    return db.localeCompare(da);
+  });
+  const tabCountClosed = document.getElementById('tabCount-closed');
+  if(tabCountClosed) tabCountClosed.textContent = deals.length;
+  if(!deals.length){
+    el.innerHTML = '<div class="muted" style="padding:10px 2px;">No deals closed yet. As soon as a contact\'s status moves to "Ordered," it will show up here with the company, order value, and reference.</div>';
+    return;
+  }
+  const totalValue = deals.reduce((s,r)=>s+(Number(r.deal_value)||0),0);
+  const avgValue = deals.length ? totalValue/deals.length : 0;
+  const monthStr = today().slice(0,7);
+  const thisMonth = deals.filter(r=>(r.stage_entered_on||r.last_contact||'').slice(0,7)===monthStr);
+  const thisMonthValue = thisMonth.reduce((s,r)=>s+(Number(r.deal_value)||0),0);
+  const summary = `
+    <div class="card good"><div class="icon">🏆</div><div class="num">${deals.length}</div><div class="lbl">Deals closed (all time)</div></div>
+    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(totalValue)}</div><div class="lbl">Total order value</div></div>
+    <div class="card"><div class="icon">📊</div><div class="num">${fmtMoney(avgValue)}</div><div class="lbl">Average deal size</div></div>
+    <div class="card good"><div class="icon">📅</div><div class="num">${fmtMoney(thisMonthValue)}</div><div class="lbl">Closed this month (${thisMonth.length})</div></div>
+  `;
+  const rows = deals.map(r=>`<tr style="cursor:pointer;" onclick="closeDashboardTab();openModal(${r.id});">
+      <td>${esc(r.company||'—')}</td>
+      <td>${esc(r.name||'—')}</td>
+      <td style="font-weight:700;color:var(--sage);">${fmtMoney(r.deal_value)}</td>
+      <td>${esc(r.order_ref||'—')}</td>
+      <td>${esc(r.stage_entered_on || r.last_contact || '—')}</td>
+      <td>${esc(r.segment||'—')}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <div class="cards compact">${summary}</div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px;">Sorted newest closed first. Click any row to open that contact's full record.</div>
+    <div style="overflow-x:auto;margin-top:14px;">
+      <table style="font-size:13px;">
+        <thead>
+          <tr>
+            <th>Company</th><th>Contact</th><th>Order Value</th><th>Order Ref</th><th>Closed On</th><th>Segment</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 // "Activity Log" — daily record of who was emailed / called, built from Last Contact
 // date + the one-click 📧/📞 tag on each contact row (see quickLogContact). Not a full
