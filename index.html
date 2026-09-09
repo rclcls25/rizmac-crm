@@ -113,11 +113,15 @@
      boxes/shadows around each one. Matches the approved mockup direction rather
      than the card-grid look (which read as a spreadsheet once several rows of
      these appeared stacked down the dashboard). */
-  .cards{display:flex;flex-wrap:wrap;gap:0;margin-bottom:6px;}
-  .card{background:transparent;border:none;border-right:1px solid var(--border);border-radius:0;
-    padding:2px 26px 2px 2px;margin-right:26px;box-shadow:none;flex:1 1 130px;min-width:110px;
+  /* Grid, not flex-wrap: every card sits in an equal-width column so a row never
+     staggers ("one is up, one is down") just because one label happened to be
+     longer than its neighbor. A right-hand border on every card except the last
+     in each row gives the same thin-divider look as before, without depending on
+     content width to place it. */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 22px;margin-bottom:10px;align-items:start;}
+  .card{background:transparent;border:none;border-radius:0;
+    padding:2px 0 2px 2px;box-shadow:none;min-width:0;
     transition:opacity .15s ease;cursor:default;}
-  .card:last-child{border-right:none;margin-right:0;}
   .card:hover{opacity:.8;}
   .card .icon{display:none;}
   .card .num{font-size:25px;font-weight:700;color:#241f18;line-height:1.15;letter-spacing:normal;font-family:'Manrope',sans-serif;}
@@ -126,13 +130,12 @@
   .card.soon .num{color:var(--amber);}
   .card.good .num{color:var(--sage);}
   .card.muted-card{opacity:.6;}
-  .cards.compact{gap:0;margin-bottom:4px;}
-  .cards.compact .card{padding:2px 20px 2px 2px;margin-right:20px;}
+  .cards.compact{gap:8px 20px;margin-bottom:14px;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));}
+  .cards.compact .card{padding:2px 0 2px 2px;}
   .cards.compact .card .num{font-size:20px;}
   .toolbar-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--navy);
     margin:14px 0 6px 2px;padding-bottom:4px;border-bottom:2px solid var(--sage-light);display:flex;align-items:center;gap:7px;}
   .toolbar-label:first-of-type{margin-top:0;}
-  .cards.compact{margin-bottom:14px;}
   /* Collapsible section header — a rounded "tab" so it visually reads as clickable
      to anyone, not just people who already know it collapses. */
   .section-toggle{
@@ -197,6 +200,15 @@
   .automation-section-head{font-size:13px;font-weight:700;color:var(--navy);margin:18px 0 8px;
     padding-top:12px;border-top:1px solid var(--border);}
   .automation-section-head:first-of-type{border-top:none;padding-top:0;}
+  /* One bordered, titled box per distinct concern (KPIs / history table / the
+     live list below) — replaces everything running together with no visual
+     separation, which read as "one big block, hard to tell what's what." */
+  .section-box{background:#fff;border:1px solid var(--border);border-radius:12px;
+    padding:12px 14px 14px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
+  .section-box + .section-box{margin-top:0;}
+  .section-box-title{font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:10px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .section-box-title .hint{font-weight:400;font-size:11px;color:var(--gray);}
   .tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:16px;}
   .tool-group-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--navy);margin:0 0 1px 1px;}
   .tool-group-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
@@ -1471,12 +1483,12 @@ function showEmailThread(id){
     <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px;max-height:38vh;overflow-y:auto;background:var(--panel,#fff);">
       ${emailThreadBubbles(r)}
     </div>
-    <div class="muted" style="font-size:11px;margin-top:4px;">Tap a message to expand/collapse it, or use ↩️ Reply on any message to write back — both what you sent and what they replied are shown in full.</div>
+    <div class="muted" style="font-size:11px;margin-top:4px;">Tap a message to expand · ↩️ Reply to write back</div>
     <div id="replyComposerBox"></div>
     <div style="margin-top:14px;">
       <label style="font-size:12px;font-weight:600;">📝 Instruction for next sync ${r.pending_email_instruction_date ? '<span class=\"muted\" style=\"font-weight:400;\">— left '+esc(r.pending_email_instruction_date)+'</span>' : ''}</label>
       <textarea id="emailInstructionBox" rows="3" placeholder="e.g. 'Send them the standard uniform price list' or 'I'll call them first, don't follow up by email yet'" style="width:100%;margin-top:5px;font-size:12.5px;">${esc(r.pending_email_instruction||'')}</textarea>
-      <div class="muted" style="font-size:11px;margin-top:3px;">This is only a note for you/the sync job to read — nothing gets sent automatically. Leave it blank and save to clear it.</div>
+      <div class="muted" style="font-size:11px;margin-top:3px;">A note to yourself — nothing sends automatically.</div>
     </div>
     <div class="modal-actions">
       <div><a href="#" onclick="event.preventDefault();openModal(${r.id});modalReturnTo='emailthread';modalReturnToId=${r.id};" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
@@ -1509,8 +1521,8 @@ function openReplyComposer(contactId, bubbleIdx){
     <div style="margin-top:12px;border:2px solid var(--sage,#7a9a7a);border-radius:10px;padding:10px;background:#fbfdf9;">
       <div style="font-size:12px;font-weight:700;">↩️ Reply to ${esc(r.name||'—')} ${r.email?'· '+esc(r.email):''}</div>
       ${replyingTo ? `<div class="muted" style="font-size:11px;margin-top:2px;">Replying re: "${esc(replyingTo.slice(0,100))}${replyingTo.length>100?'…':''}"</div>` : ''}
-      <textarea id="replyComposerText" rows="5" placeholder="Write your reply here — it sends from your own Gmail as ${esc(r.email||'this contact')}'s regular thread." style="width:100%;margin-top:6px;font-size:12.5px;">${esc(draft)}</textarea>
-      <div class="muted" style="font-size:11px;margin-top:3px;">This stays inside the CRM — no Outlook or Chrome window opens. Clicking Send queues it; it goes out via Gmail automatically within about an hour and then shows here as sent.</div>
+      <textarea id="replyComposerText" rows="5" placeholder="Write your reply…" style="width:100%;margin-top:6px;font-size:12.5px;">${esc(draft)}</textarea>
+      <div class="muted" style="font-size:11px;margin-top:3px;">Sends via Gmail within about an hour — no Outlook or Chrome needed.</div>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn" onclick="closeReplyComposer()">Cancel</button>
         <button class="btn sage" onclick="sendOutgoingReply(${r.id})">Send reply</button>
@@ -1610,16 +1622,21 @@ function renderCorrespondencePanel(){
     </div>`;
   panel.innerHTML = `
     ${automationHtml}
-    <div class="automation-section-head" style="margin-top:0;">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
-    ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
-      ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="showEmailThread(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
-    </div>` : ''}
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      ${col('Positive', '🟢', positive, 'No active back-and-forth right now.')}
-      ${col('Medium', '🟡', medium, 'Nothing that has gone quiet.')}
-      ${col('Low', '🔴', low, 'No unanswered first emails.')}
-      ${pending.length ? col('Awaiting first sync', '⏳', pending, '') : ''}
+    <div class="section-box">
+      <div class="section-box-title">
+        <span>📧 Correspondence</span>
+        <span class="hint">${syncedAt ? 'synced '+esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})) : 'awaiting first sync'}</span>
+      </div>
+      ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
+        ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="showEmailThread(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
+      </div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${col('Positive', '🟢', positive, 'No active back-and-forth right now.')}
+        ${col('Medium', '🟡', medium, 'Nothing that has gone quiet.')}
+        ${col('Low', '🔴', low, 'No unanswered first emails.')}
+        ${pending.length ? col('Awaiting first sync', '⏳', pending, '') : ''}
+      </div>
     </div>
   `;
 }
@@ -1686,11 +1703,13 @@ function renderCallsPanel(){
     </div>`;
   panel.innerHTML = `
     ${automationHtml}
-    <div class="automation-section-head" style="margin-top:0;">📞 Calls — your live call queue <span class="muted" style="font-weight:400;font-size:11px;">— built from each contact's Next Follow-up date; you make the call, then log it here</span></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      ${col('Overdue', '🔴', overdue, 'Nothing overdue.')}
-      ${col('Due today', '🟡', dueToday, 'Nothing due today.')}
-      ${col('Next 3 days', '🟢', upcoming, 'Nothing coming up in the next 3 days.')}
+    <div class="section-box">
+      <div class="section-box-title"><span>📞 Call queue</span></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${col('Overdue', '🔴', overdue, 'Nothing overdue.')}
+        ${col('Due today', '🟡', dueToday, 'Nothing due today.')}
+        ${col('Next 3 days', '🟢', upcoming, 'Nothing coming up in the next 3 days.')}
+      </div>
     </div>
   `;
 }
@@ -1803,13 +1822,17 @@ function renderCleanupPanel(){
       </div>
     </div>`;
   panel.innerHTML = `
-    <div class="automation-section-head" style="margin-top:0;">🧹 Contacts worth reviewing — ${total} total</div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px;">These are flagged as low-value, but nothing is ever deleted automatically — review each tab and click 🗑 on anyone you don't want to keep. Deleting keeps a permanent record marked "do-not-contact," so they can never come back even if the same lead is generated again later.</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      ${col('No Response After Follow-ups', '📭', noResponse, 'Nobody here yet.', 'Got 3 auto follow-ups, never replied.')}
-      ${col('Not a Fit', '🚫', notFit, 'Nobody here yet.', 'Auto-flagged as unlikely to buy uniforms (e.g. wrong industry, wrong region).')}
-      ${col('Manually Archived', '🗄', manual, 'Nobody here yet.', 'Archived by you or without a specific auto-reason.')}
-      ${col('Declined (Not Interested)', '❌', declined, 'Nobody here yet.', 'Explicitly said no.')}
+    <div class="section-box">
+      <div class="section-box-title">
+        <span>🧹 Contacts worth reviewing — ${total} total</span>
+        <span class="hint">Nothing deletes automatically — click 🗑 to remove someone for good.</span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${col('No Response After Follow-ups', '📭', noResponse, 'Nobody here yet.', 'Got 3 auto follow-ups, never replied.')}
+        ${col('Not a Fit', '🚫', notFit, 'Nobody here yet.', 'Auto-flagged as unlikely to buy uniforms (e.g. wrong industry, wrong region).')}
+        ${col('Manually Archived', '🗄', manual, 'Nobody here yet.', 'Archived by you or without a specific auto-reason.')}
+        ${col('Declined (Not Interested)', '❌', declined, 'Nobody here yet.', 'Explicitly said no.')}
+      </div>
     </div>
   `;
 }
@@ -1860,63 +1883,64 @@ function renderChannelAutomationCards(channel){
       ? '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>'
       : '<div class="muted" style="padding:10px 2px;">Loading automation data…</div>';
   }
-  const { snap, snapDate, isToday, sum, totalRepliesSnap, quotedPipelineValue, dateOptions, monthOptions, trendRows } = p;
-  const snapshot = `
-    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(quotedPipelineValue)}</div><div class="lbl">Quoted pipeline value</div></div>
-    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesSnap}</div><div class="lbl">Replies ${isToday?'today':'this day'}</div></div>
-    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${snap.archived}</div><div class="lbl">Leads archived ${isToday?'today':'this day'}</div></div>
-  `;
+  const { snap, snapDate, isToday, sum, dateOptions, monthOptions, trendRows } = p;
+  // Deliberately channel-only numbers here — no pipeline-value/deal-amount card in
+  // this section. That figure lives on Overview/By Company; showing it under a
+  // LinkedIn or Email automation heading is what he read as "why is there a dollar
+  // amount here, I didn't do anything on the amount" — it wasn't wrong, just
+  // misplaced, so it's been removed from both channel views rather than explained.
   const isEmail = channel==='email';
   const channelCards = isEmail ? `
-    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_sent')"><div class="icon">✉️</div><div class="num">${snap.emails_sent}</div><div class="lbl">First emails sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_followups')"><div class="icon">📧</div><div class="num">${snap.email_followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${snap.email_replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_sent')"><div class="icon">✉️</div><div class="num">${snap.emails_sent}</div><div class="lbl">Sent${isToday?' today':''}</div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_followups')"><div class="icon">📧</div><div class="num">${snap.email_followups_sent}</div><div class="lbl">Follow-ups</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.email_replies}</div><div class="lbl">Replies</div></div>
+    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
   ` : `
-    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_invites')"><div class="icon">🤝</div><div class="num">${snap.invites_sent}</div><div class="lbl">New invites sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_followups')"><div class="icon">🔁</div><div class="num">${snap.followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${snap.replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_invites')"><div class="icon">🤝</div><div class="num">${snap.invites_sent}</div><div class="lbl">Invites${isToday?' today':''}</div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_followups')"><div class="icon">🔁</div><div class="num">${snap.followups_sent}</div><div class="lbl">Follow-ups</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.replies}</div><div class="lbl">Replies</div></div>
+    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
   `;
   const rows = trendRows.map(d=> isEmail ? `<tr>
       <td style="padding:6px 8px;">${esc(d.date)}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_sent')">${d.emails_sent}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_followups')">${d.email_followups_sent}</td>
       <td style="padding:6px 8px;">${d.email_replies}</td>
-      <td style="padding:6px 8px;">${d.archived}</td><td style="padding:6px 8px;">${fmtMoney(d.pipeline_value)}</td>
+      <td style="padding:6px 8px;">${d.archived}</td>
     </tr>` : `<tr>
       <td style="padding:6px 8px;">${esc(d.date)}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_invites')">${d.invites_sent}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_followups')">${d.followups_sent}</td>
       <td style="padding:6px 8px;">${d.replies}</td>
-      <td style="padding:6px 8px;">${d.archived}</td><td style="padding:6px 8px;">${fmtMoney(d.pipeline_value)}</td>
+      <td style="padding:6px 8px;">${d.archived}</td>
     </tr>`).join('');
   return `
-    <div class="automation-section-head" style="margin-top:0;">${isEmail?'✉️ Email automation':'🤝 LinkedIn automation'} <span class="muted" style="font-weight:400;font-size:11.5px;">${isEmail?'— first emails always wait for your go-ahead; only follow-ups and replies happen on their own':'— feeds the call queue below once a connection is made'}</span></div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-      <label class="muted" style="font-size:12px;">Showing:</label>
-      <select onchange="setAutomationSnapshotDate(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${dateOptions}</select>
+    <div class="section-box">
+      <div class="section-box-title">
+        <span>${isEmail?'✉️ Email automation':'🤝 LinkedIn automation'}</span>
+        <select onchange="setAutomationSnapshotDate(this.value)" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">${dateOptions}</select>
+      </div>
+      <div class="cards compact">${channelCards}</div>
+      <div class="hint" style="margin-top:10px;">Last 7 days: ${isEmail ? `${sum('emails_sent')} sent, ${sum('email_replies')} replies` : `${sum('invites_sent')} invites, ${sum('replies')} replies`}</div>
+      ${snap.notes ? `<div class="muted" style="margin-top:6px;font-size:12px;">📝 ${esc(snap.notes)}</div>` : ''}
     </div>
-    <div class="cards compact">${snapshot}</div>
-    <div class="cards compact" style="margin-top:6px;">${channelCards}</div>
-    <div class="muted" style="margin-top:6px;font-size:11.5px;">Quoted pipeline value = the Deal Value on every contact currently at the "Quoted" stage. Once a deal closes, its value shows instead on the <a href="#" onclick="event.preventDefault();switchDashboardTab('closed');return false;" style="color:var(--navy);text-decoration:underline;">Closed Deals</a> tab.</div>
-    <div style="margin-top:10px;font-size:12.5px;color:var(--gray);">Last 7 days: ${isEmail ? `${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('email_replies')} replies` : `${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('replies')} replies`} · ${sum('archived')} archived</div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-      <label class="muted" style="font-size:12px;">History for:</label>
-      <select onchange="setAutomationTrendMonth(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${monthOptions}</select>
-      <span class="muted" style="font-size:11.5px;">Click any underlined number to see exactly who.</span>
+    <div class="section-box">
+      <div class="section-box-title">
+        <span>📊 Daily history</span>
+        <select onchange="setAutomationTrendMonth(this.value)" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;">${monthOptions}</select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+          <thead><tr style="text-align:left;color:var(--gray);">
+            <th style="padding:4px 8px;">Date</th>
+            ${isEmail ? '<th style="padding:4px 8px;">Sent</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>' : '<th style="padding:4px 8px;">Invites</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>'}
+            <th style="padding:4px 8px;">Archived</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" style="padding:12px 8px;" class="muted">No logged days in this month.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:6px;">Click a number above for the list</div>
     </div>
-    <div style="overflow-x:auto;margin-top:8px;margin-bottom:4px;">
-      <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
-        <thead><tr style="text-align:left;color:var(--gray);">
-          <th style="padding:4px 8px;">Date</th>
-          ${isEmail ? '<th style="padding:4px 8px;">Sent</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>' : '<th style="padding:4px 8px;">Invites</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>'}
-          <th style="padding:4px 8px;">Archived</th><th style="padding:4px 8px;">Quoted Value</th>
-        </tr></thead>
-        <tbody>${rows || '<tr><td colspan="6" style="padding:12px 8px;" class="muted">No logged days in this month.</td></tr>'}</tbody>
-      </table>
-    </div>
-    ${snap.notes ? `<div class="muted" style="margin-top:6px;">📝 ${esc(snap.notes)}</div>` : ''}
-    <div style="border-bottom:2px solid var(--border);margin:14px 0 14px;"></div>
   `;
 }
 
