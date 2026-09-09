@@ -156,12 +156,12 @@
   .section-toggle.is-open .chev-badge{transform:rotate(90deg);}
   /* Single-row tab bar — all section labels sit side by side; clicking one swaps
      which panel is shown below, instead of each section stacking/collapsing in place. */
-  .dash-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:18px 0 0;border-bottom:2px solid var(--border);}
+  .dash-tabs{display:flex;flex-wrap:nowrap;gap:3px;margin:18px 0 0;border-bottom:2px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
   .dash-tab{
     appearance:none;border:1px solid var(--border);border-bottom:none;background:#efe9da;color:var(--navy);
-    font-family:'Manrope',inherit;font-size:13.5px;font-weight:600;
-    padding:10px 16px;border-radius:11px 11px 0 0;cursor:pointer;transition:background .18s ease,color .18s ease,transform .12s ease;
-    display:flex;align-items:center;gap:7px;position:relative;top:2px;
+    font-family:'Manrope',inherit;font-size:11.5px;font-weight:600;white-space:nowrap;flex:none;
+    padding:8px 10px;border-radius:9px 9px 0 0;cursor:pointer;transition:background .18s ease,color .18s ease,transform .12s ease;
+    display:flex;align-items:center;gap:5px;position:relative;top:2px;
   }
   .dash-tab:hover{background:#e6dcc4;}
   .dash-tab.active{background:var(--navy);color:#fff;border-color:var(--navy);top:0;box-shadow:0 -2px 10px rgba(27,42,74,.15);}
@@ -575,7 +575,6 @@
     <button class="dash-tab" data-tab="company" onclick="switchDashboardTab('company')">By Company <span class="tab-badge" id="tabCount-company">0</span></button>
     <button class="dash-tab" data-tab="closed" onclick="switchDashboardTab('closed')">Closed Deals <span class="tab-badge" id="tabCount-closed">0</span></button>
     <button class="dash-tab" data-tab="activity" onclick="switchDashboardTab('activity')">Activity Log <span class="tab-badge" id="tabCount-activity">0</span></button>
-    <button class="dash-tab" data-tab="automation" onclick="switchDashboardTab('automation')">Automation</button>
     <button class="dash-tab" data-tab="correspondence" onclick="switchDashboardTab('correspondence')">📧 Emails</button>
     <button class="dash-tab" data-tab="calls" onclick="switchDashboardTab('calls')">📞 Calls</button>
     <button class="dash-tab" data-tab="cleanup" onclick="switchDashboardTab('cleanup')">🧹 Cleanup <span class="tab-badge" id="tabCount-cleanup">0</span></button>
@@ -594,7 +593,6 @@
   <div class="dash-panel" id="panel-company"></div>
   <div class="dash-panel" id="panel-closed"></div>
   <div class="dash-panel" id="panel-activity"></div>
-  <div class="dash-panel" id="panel-automation"><div class="muted" style="padding:10px 2px;">Loading automation data…</div></div>
   <div class="dash-panel" id="panel-correspondence"></div>
   <div class="dash-panel" id="panel-calls"></div>
   <div class="dash-panel" id="panel-cleanup"></div>
@@ -851,7 +849,7 @@ function isNeedsAttention(r){ return isStale(r) || isQuotedStale(r) || isCold(r)
 // Analytics / Views & Tools) — only one panel is shown at a time, switched by clicking
 // a tab, instead of each section independently expanding in place. Remembers the last
 // tab you had open across visits. Filter contacts stays outside this system entirely.
-const DASH_TABS = ['overview','myqueue','system','alerts','company','closed','activity','automation','correspondence','calls','cleanup','analytics','viewstools'];
+const DASH_TABS = ['overview','myqueue','system','alerts','company','closed','activity','correspondence','calls','cleanup','analytics','viewstools'];
 let activityLogDate = today();
 function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
@@ -894,7 +892,7 @@ function closeDashboardTab(){
 }
 const DASH_TAB_TITLES = {
   overview:'Overview', myqueue:'My Follow-Up Queue', system:'System Status',
-  alerts:'Needs Attention', company:'By Company', closed:'Closed Deals', activity:'Activity Log', automation:'Automation',
+  alerts:'Needs Attention', company:'By Company', closed:'Closed Deals', activity:'Activity Log',
   correspondence:'Emails', calls:'Calls', cleanup:'Cleanup Review',
   analytics:'Analytics', viewstools:'Views & Tools'
 };
@@ -914,14 +912,13 @@ function applyDashboardTabState(){
   // prospects — hide the filter bar + contacts table while any of them is open so the
   // report is the whole screen, not squeezed above a leads list that isn't relevant to it.
   const contactsSection = document.getElementById('rizmacContactsSection');
-  const HIDE_LIST_TABS = ['automation','activity','closed','company','correspondence','calls','cleanup','viewstools','analytics'];
+  const HIDE_LIST_TABS = ['activity','closed','company','correspondence','calls','cleanup','viewstools','analytics'];
   if(contactsSection) contactsSection.style.display = HIDE_LIST_TABS.includes(activeDashboardTab) ? 'none' : '';
-  // Landing straight on the Automation tab (remembered from last visit) used to show a
-  // completely blank panel until the separate Automation Log fetch finished — on a slow
+  // Landing straight on the Emails or Calls tab (remembered from last visit) used to show
+  // a completely blank panel until the separate Automation Log fetch finished — on a slow
   // connection that could look like the page was broken. Render immediately with whatever
   // we have (a "loading" placeholder if the log hasn't arrived yet, real data if it has);
   // loadAutomationLog() will call this again once the fetch resolves to fill in real data.
-  if(activeDashboardTab==='automation' && typeof renderAutomationPanel==='function') renderAutomationPanel();
   if(activeDashboardTab==='correspondence' && typeof renderCorrespondencePanel==='function') renderCorrespondencePanel();
   if(activeDashboardTab==='calls' && typeof renderCallsPanel==='function') renderCallsPanel();
   if(activeDashboardTab==='cleanup' && typeof renderCleanupPanel==='function') renderCleanupPanel();
@@ -1387,24 +1384,56 @@ function parseEmailThread(text){
     return { date:m[1], from:m[2], text:m[3] };
   }).filter(Boolean);
 }
-// Each bubble opens collapsed to one line (a real preview, not a generic
-// label) and expands to the full synced text on click — a plain wall of
+// Holds the full text of every bubble currently on screen, keyed by a simple
+// index, so onclick handlers never have to smuggle the message text through
+// an HTML attribute (that was the source of the old broken toggle — long text
+// with quotes/newlines inside an inline onclick string is fragile). Rebuilt
+// every time emailThreadBubbles() runs.
+let EMAIL_BUBBLE_TEXT = {};
+// Explicit expanded/collapsed state via a data attribute + CSS class — never
+// read back computed inline styles (that was inverting: "big by default,
+// smaller when tapped"). Collapsed shows a one-line clipped preview; expanded
+// shows the full text, word-wrapped, and always grows, never shrinks below
+// the preview line's height.
+function toggleEmailBubble(idx){
+  const el = document.getElementById('bubbletext-'+idx);
+  const tag = document.getElementById('bubbletag-'+idx);
+  if(!el) return;
+  const expanded = el.getAttribute('data-expanded') === '1';
+  el.setAttribute('data-expanded', expanded ? '0' : '1');
+  el.textContent = expanded ? EMAIL_BUBBLE_TEXT[idx].preview : EMAIL_BUBBLE_TEXT[idx].full;
+  el.style.whiteSpace = expanded ? 'nowrap' : 'normal';
+  el.style.overflow = expanded ? 'hidden' : 'visible';
+  el.style.textOverflow = expanded ? 'ellipsis' : 'unset';
+  if(tag) tag.textContent = expanded ? 'tap to expand' : 'tap to collapse';
+}
+// Each bubble opens collapsed to one real-preview line and expands to the
+// FULL synced text on click (both Us and Them messages) — a plain wall of
 // same-length paragraphs was the thing he said he couldn't read as a
-// conversation. Bubbles long enough to matter get a small "tap to expand" hint.
+// conversation, and the first attempt at expand/collapse was broken (clicking
+// did nothing, or shrank the bubble instead of growing it). Also carries a
+// contextual "↩️ Reply" link per message so replying is triggered from the
+// specific message being answered, not a single shared button.
 function emailThreadBubbles(r){
   const msgs = parseEmailThread(r.email_thread);
+  EMAIL_BUBBLE_TEXT = {};
   if(!msgs.length){
     return `<div class="muted" style="padding:16px 4px;font-size:12.5px;">${r.email_outreach_sent ? 'No message history synced yet — the Email Conversation Sync job checks Gmail every few hours and will fill this in.' : 'No emails sent to this contact yet.'}</div>`;
   }
-  return msgs.map(m=>{
+  return msgs.map((m,idx)=>{
     const fromThem = m.from.toLowerCase()==='them';
-    const isLong = (m.text||'').length > 66;
-    const toggle = "const s=this.style; const open=s.whiteSpace==='normal'; s.whiteSpace=open?'nowrap':'normal'; s.textOverflow=open?'ellipsis':'unset'; const h=this.nextElementSibling; if(h) h.style.display=open?'':'none';";
+    const full = m.text||'';
+    const preview = full.length > 80 ? full.slice(0,80)+'…' : full;
+    const isLong = full.length > 80;
+    EMAIL_BUBBLE_TEXT[idx] = { full, preview };
     return `<div style="display:flex;justify-content:${fromThem?'flex-start':'flex-end'};margin:6px 0;">
-      <div style="max-width:78%;background:${fromThem?'var(--panel2,#f3f0e9)':'#dfeee2'};border-radius:12px;padding:8px 12px;font-size:12.5px;line-height:1.4;">
+      <div style="max-width:82%;background:${fromThem?'var(--panel2,#f3f0e9)':'#dfeee2'};border-radius:12px;padding:8px 12px;font-size:12.5px;line-height:1.45;">
         <div style="font-weight:700;font-size:10.5px;color:var(--gray);margin-bottom:2px;">${fromThem?'Them':'Us'} · ${esc(m.date)}</div>
-        <div ${isLong?`onclick="${toggle}"`:''} style="${isLong?'cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;':''}max-width:100%;">${esc(m.text)}</div>
-        ${isLong ? `<div class="muted" style="font-size:10px;margin-top:2px;">tap to expand</div>` : ''}
+        <div id="bubbletext-${idx}" data-expanded="0" ${isLong?`onclick="toggleEmailBubble(${idx})"`:''} style="${isLong?'cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;':'white-space:normal;'}max-width:100%;">${esc(preview)}</div>
+        <div style="display:flex;gap:10px;margin-top:3px;">
+          ${isLong ? `<span id="bubbletag-${idx}" class="muted" style="font-size:10px;cursor:pointer;text-decoration:underline;" onclick="toggleEmailBubble(${idx})">tap to expand</span>` : ''}
+          <span class="muted" style="font-size:10px;cursor:pointer;text-decoration:underline;" onclick="openReplyComposer(${r.id},${idx})">↩️ Reply</span>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -1426,8 +1455,6 @@ function showEmailThread(id){
   const tierMeta = ENGAGEMENT_TIER_META[r.email_engagement];
   const daysSince = r.last_email_reply_date ? daysUntil(r.last_email_reply_date) : (r.email_outreach_date ? daysUntil(r.email_outreach_date) : null);
   const hint = emailNextStepHint(r);
-  const mailSubject = encodeURIComponent('Re: Rizmac Clothing Line Co — ' + (r.company||''));
-  const mailHref = r.email ? `mailto:${encodeURIComponent(r.email)}?subject=${mailSubject}` : null;
   document.getElementById('modalBody').innerHTML = `
     <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
     <h2 style="margin-bottom:2px;">✉️ ${esc(r.name||'—')}</h2>
@@ -1439,10 +1466,13 @@ function showEmailThread(id){
     </div>
     ${hint ? `<div class="muted" style="margin-top:6px;font-size:12px;">${hint}</div>` : ''}
     ${r.reply_asking_for_quote ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px;color:#8a5a1e;font-weight:600;">💰 Their latest reply looks like it's asking about pricing/quotation — nothing has been sent back. Decide what to quote, then either send it yourself or leave an instruction below.</div>` : ''}
+    ${r.outgoing_reply_draft ? `<div style="background:#eaf3ea;border:1px solid #9dc79d;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px;color:#2f5c31;">⏳ A reply is queued and sends automatically within ~15 minutes (queued ${esc(r.outgoing_reply_queued_at||'')}): <span style="font-style:italic;">"${esc(r.outgoing_reply_draft.slice(0,140))}${r.outgoing_reply_draft.length>140?'…':''}"</span> <a href="#" onclick="event.preventDefault();cancelQueuedReply(${r.id})" style="color:#2f5c31;text-decoration:underline;font-weight:600;">Cancel</a></div>` : ''}
+    ${r.outgoing_reply_send_error ? `<div style="background:#fdeaea;border:1px solid #e0a0a0;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px;color:#8a2020;">⚠️ Last send attempt failed: ${esc(r.outgoing_reply_send_error)} <a href="#" onclick="event.preventDefault();dismissReplyError(${r.id})" style="color:#8a2020;text-decoration:underline;font-weight:600;">Dismiss</a></div>` : ''}
     <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px;max-height:38vh;overflow-y:auto;background:var(--panel,#fff);">
       ${emailThreadBubbles(r)}
     </div>
-    <div class="muted" style="font-size:11px;margin-top:4px;">Tap any long message above to expand it — click again to collapse.</div>
+    <div class="muted" style="font-size:11px;margin-top:4px;">Tap a message to expand/collapse it, or use ↩️ Reply on any message to write back — both what you sent and what they replied are shown in full.</div>
+    <div id="replyComposerBox"></div>
     <div style="margin-top:14px;">
       <label style="font-size:12px;font-weight:600;">📝 Instruction for next sync ${r.pending_email_instruction_date ? '<span class=\"muted\" style=\"font-weight:400;\">— left '+esc(r.pending_email_instruction_date)+'</span>' : ''}</label>
       <textarea id="emailInstructionBox" rows="3" placeholder="e.g. 'Send them the standard uniform price list' or 'I'll call them first, don't follow up by email yet'" style="width:100%;margin-top:5px;font-size:12.5px;">${esc(r.pending_email_instruction||'')}</textarea>
@@ -1451,7 +1481,6 @@ function showEmailThread(id){
     <div class="modal-actions">
       <div><a href="#" onclick="event.preventDefault();openModal(${r.id});modalReturnTo='emailthread';modalReturnToId=${r.id};" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
       <div style="display:flex;gap:8px;">
-        ${mailHref ? `<a class="btn ghost" href="${mailHref}" style="text-decoration:none;">✉️ Reply by email</a>` : ''}
         <button class="btn" onclick="closeModal()">Close</button>
         <button class="btn sage" onclick="saveEmailInstruction(${r.id})">Save instruction</button>
       </div>
@@ -1459,6 +1488,86 @@ function showEmailThread(id){
   `;
   document.getElementById('overlay').classList.add('show');
   document.getElementById('overlay').scrollTop = 0;
+}
+// ---- In-CRM email reply composer ----------------------------------------
+// Replaces the rejected mailto: "Reply by email" button. Opens right inside
+// the email popup (never a new tab/app), triggered from the specific message
+// being answered via that message's own ↩️ Reply link. Sending itself can't
+// happen from this static front-end without exposing Gmail credentials, so
+// "Send" queues the text into Outgoing Reply Draft/Queued At on the contact;
+// the "Rizmac Email Reply Sender" scheduled job (Gmail + Airtable, cloud-only,
+// runs every ~15 min) actually sends it and clears the queue. The regular
+// Email Conversation Sync job then picks the sent message up out of Gmail
+// into Email Thread on its own next run, same as any other message.
+function openReplyComposer(contactId, bubbleIdx){
+  const r = DATA.find(x=>x.id===contactId);
+  const box = document.getElementById('replyComposerBox');
+  if(!r || !box) return;
+  const replyingTo = EMAIL_BUBBLE_TEXT[bubbleIdx] ? EMAIL_BUBBLE_TEXT[bubbleIdx].full : '';
+  const draft = r.outgoing_reply_draft || '';
+  box.innerHTML = `
+    <div style="margin-top:12px;border:2px solid var(--sage,#7a9a7a);border-radius:10px;padding:10px;background:#fbfdf9;">
+      <div style="font-size:12px;font-weight:700;">↩️ Reply to ${esc(r.name||'—')} ${r.email?'· '+esc(r.email):''}</div>
+      ${replyingTo ? `<div class="muted" style="font-size:11px;margin-top:2px;">Replying re: "${esc(replyingTo.slice(0,100))}${replyingTo.length>100?'…':''}"</div>` : ''}
+      <textarea id="replyComposerText" rows="5" placeholder="Write your reply here — it sends from your own Gmail as ${esc(r.email||'this contact')}'s regular thread." style="width:100%;margin-top:6px;font-size:12.5px;">${esc(draft)}</textarea>
+      <div class="muted" style="font-size:11px;margin-top:3px;">This stays inside the CRM — no Outlook or Chrome window opens. Clicking Send queues it; it goes out via Gmail automatically within ~15 minutes and then shows here as sent.</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn" onclick="closeReplyComposer()">Cancel</button>
+        <button class="btn sage" onclick="sendOutgoingReply(${r.id})">Send reply</button>
+      </div>
+    </div>`;
+  box.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function closeReplyComposer(){
+  const box = document.getElementById('replyComposerBox');
+  if(box) box.innerHTML = '';
+}
+function sendOutgoingReply(id){
+  const r = DATA.find(x=>x.id===id);
+  const ta = document.getElementById('replyComposerText');
+  if(!r || !ta) return;
+  const text = ta.value.trim();
+  if(!text){ alert('Write something before sending.'); return; }
+  if(!r.email){ alert('This contact has no email on file — add one first.'); return; }
+  const prevDraft = r.outgoing_reply_draft, prevQueued = r.outgoing_reply_queued_at;
+  r.outgoing_reply_draft = text;
+  r.outgoing_reply_queued_at = today();
+  r.outgoing_reply_send_error = '';
+  closeReplyComposer();
+  showEmailThread(id);
+  if(!r._rid) return;
+  const fields = {};
+  fields[F.outgoingReplyDraft] = text;
+  fields[F.outgoingReplyQueuedAt] = today();
+  fields[F.outgoingReplySendError] = null;
+  airtablePatch(r._rid, fields).catch(e=>{
+    console.error('Queue reply failed', e);
+    r.outgoing_reply_draft = prevDraft; r.outgoing_reply_queued_at = prevQueued;
+    alert('Could not queue the reply — check you\'re online and try again.');
+    showEmailThread(id);
+  });
+}
+function cancelQueuedReply(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm('Cancel this queued reply before it sends?')) return;
+  r.outgoing_reply_draft = ''; r.outgoing_reply_queued_at = '';
+  showEmailThread(id);
+  if(!r._rid) return;
+  const fields = {};
+  fields[F.outgoingReplyDraft] = null;
+  fields[F.outgoingReplyQueuedAt] = null;
+  airtablePatch(r._rid, fields).catch(e=>console.error('Cancel reply failed', e));
+}
+function dismissReplyError(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  r.outgoing_reply_send_error = '';
+  showEmailThread(id);
+  if(!r._rid) return;
+  const fields = {};
+  fields[F.outgoingReplySendError] = null;
+  airtablePatch(r._rid, fields).catch(e=>console.error('Dismiss error failed', e));
 }
 function saveEmailInstruction(id){
   const r = DATA.find(x=>x.id===id);
@@ -1474,14 +1583,16 @@ function saveEmailInstruction(id){
   closeModal();
   alert(text ? 'Instruction saved — it will show up in the sync job\'s next report.' : 'Instruction cleared.');
 }
-// Renders straight into its own "📧 Emails" dashboard tab now (previously a section
-// stacked inside Automation) — kept as a separate function/panel from Calls per his
-// "you could not put email and calls together... separate tab" request.
+// Renders into the "📧 Emails" dashboard tab: the email-automation stats
+// (from what used to be a separate "Automation" tab) at the top, then the
+// live correspondence panel below — his "automation related to the emails
+// will show on top, then the emails correspondence below it" request.
 function renderCorrespondencePanel(){
   const panel = document.getElementById('panel-correspondence');
   if(!panel) return;
+  const automationHtml = renderChannelAutomationCards('email');
   const emailed = DATA.filter(r=>!r.archived && !r.deleted && r.email_outreach_sent);
-  if(!emailed.length){ panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No emails sent yet — once outreach starts, replies will show up here automatically.</div>'; return; }
+  if(!emailed.length){ panel.innerHTML = automationHtml + '<div class="muted" style="padding:10px 2px;">No emails sent yet — once outreach starts, replies will show up here automatically.</div>'; return; }
   const quoteAsks = emailed.filter(r=>r.reply_asking_for_quote);
   const positive = emailed.filter(r=>r.email_engagement==='Positive');
   const medium = emailed.filter(r=>r.email_engagement==='Medium');
@@ -1498,6 +1609,7 @@ function renderCorrespondencePanel(){
       </div>
     </div>`;
   panel.innerHTML = `
+    ${automationHtml}
     <div class="automation-section-head" style="margin-top:0;">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
     ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
@@ -1553,13 +1665,15 @@ function callRow(r){
     <div style="flex:none;text-align:right;font-size:11px;">${badge}</div>
   </div>`;
 }
-// Renders straight into its own "📞 Calls" dashboard tab (previously a section
-// stacked inside Automation) — split out per his "separate tab" request.
+// Renders into the "📞 Calls" dashboard tab: the LinkedIn-automation stats
+// (LinkedIn connections are what feeds this call queue) at the top, then the
+// live call queue below — mirrors the Emails tab's shape.
 function renderCallsPanel(){
   const panel = document.getElementById('panel-calls');
   if(!panel) return;
+  const automationHtml = renderChannelAutomationCards('linkedin');
   const active = DATA.filter(r=>!r.archived && !r.deleted && isCallable(r) && r.next_followup);
-  if(!active.length){ panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No calls due — this queue is built from each contact\'s Next Follow-up date, so it fills in as you set those.</div>'; return; }
+  if(!active.length){ panel.innerHTML = automationHtml + '<div class="muted" style="padding:10px 2px;">No calls due — this queue is built from each contact\'s Next Follow-up date, so it fills in as you set those.</div>'; return; }
   const overdue = active.filter(r=>daysUntil(r.next_followup)<0).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
   const dueToday = active.filter(r=>daysUntil(r.next_followup)===0);
   const upcoming = active.filter(r=>{ const d=daysUntil(r.next_followup); return d>0 && d<=3; }).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
@@ -1571,6 +1685,7 @@ function renderCallsPanel(){
       </div>
     </div>`;
   panel.innerHTML = `
+    ${automationHtml}
     <div class="automation-section-head" style="margin-top:0;">📞 Calls — your live call queue <span class="muted" style="font-weight:400;font-size:11px;">— built from each contact's Next Follow-up date; you make the call, then log it here</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       ${col('Overdue', '🔴', overdue, 'Nothing overdue.')}
@@ -1698,59 +1813,25 @@ function renderCleanupPanel(){
     </div>
   `;
 }
-function renderAutomationPanel(){
-  const panel = document.getElementById('panel-automation');
-  if(!panel) return;
-  if(!AUTOMATION_LOG.length){
-    panel.innerHTML = automationLogLoaded
-      ? '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>'
-      : '<div class="muted" style="padding:10px 2px;">Loading automation data…</div>';
-    return;
-  }
-  // The snapshot cards show whichever day is picked (defaults to the most recent
-  // logged day) — falls back to the latest row if the picked date has no row.
+// Was its own third "Automation" tab, stacked above/separate from Emails and
+// Calls. Per his "I don't know why you put three tabs separately... we can
+// make it in two tabs, like automation related to the emails will show on
+// top, then the emails correspondence below it — same for calls" request,
+// this is now just the shared data-prep step: each channel's automation
+// cards render inline at the TOP of that channel's own tab (see
+// renderChannelAutomationCards below), and there is no standalone
+// Automation tab or panel anymore.
+function automationSnapshotPrep(){
+  if(!AUTOMATION_LOG.length) return null;
   const snap = AUTOMATION_LOG.find(d=>d.date===automationSnapshotDate) || AUTOMATION_LOG[0];
   const snapDate = snap.date;
+  const isToday = snapDate === AUTOMATION_LOG[0].date;
   const last7 = AUTOMATION_LOG.slice(0,7);
   const sum = k => last7.reduce((s,d)=>s+(d[k]||0),0);
   const totalRepliesSnap = snap.replies + snap.email_replies;
-  // Quoted-value is computed live from the current CRM data (Status = "Quoted" only),
-  // not from the once-a-day automation log snapshot — that way it's always exactly
-  // right-now-accurate and never drifts from what's on screen elsewhere. It deliberately
-  // excludes "Ordered" (closed/won) deals: once a deal closes, its value belongs in the
-  // Closed Deals tab, not here — a contact is either still being quoted, or it's done.
   const quotedPipelineValue = DATA.filter(r=>!r.archived && !r.deleted && r.status==='Quoted').reduce((s,r)=>s+(Number(r.deal_value)||0),0);
-
-  // Every date the automation actually has a row for, newest first — feeds both the
-  // day picker and the month filter below.
   const allDates = AUTOMATION_LOG.map(d=>d.date).filter(Boolean);
   const dateOptions = allDates.map(d=>`<option value="${esc(d)}" ${d===snapDate?'selected':''}>${esc(d)}${d===AUTOMATION_LOG[0].date?' (latest)':''}</option>`).join('');
-  const isToday = snapDate === AUTOMATION_LOG[0].date;
-
-  // Top row: the numbers Mohammad actually cares about at a glance for the picked day.
-  const snapshot = `
-    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(quotedPipelineValue)}</div><div class="lbl">Quoted pipeline value</div></div>
-    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesSnap}</div><div class="lbl">Replies ${isToday?'today':'this day'}</div></div>
-    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${snap.archived}</div><div class="lbl">Leads archived ${isToday?'today':'this day'}</div></div>
-  `;
-
-  // Two channel sections, each self-contained, so LinkedIn numbers are never mixed
-  // into the same tile as Email numbers. The invite/follow-up/first-email counters
-  // are clickable — they open the actual list of who, not just the count.
-  const linkedinCards = `
-    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_invites')"><div class="icon">🤝</div><div class="num">${snap.invites_sent}</div><div class="lbl">New invites sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_followups')"><div class="icon">🔁</div><div class="num">${snap.followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${snap.replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
-  `;
-  const emailCards = `
-    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_sent')"><div class="icon">✉️</div><div class="num">${snap.emails_sent}</div><div class="lbl">First emails sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_followups')"><div class="icon">📧</div><div class="num">${snap.email_followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
-    <div class="card good"><div class="icon">💬</div><div class="num">${snap.email_replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
-  `;
-
-  // Month filter for the history table below — every month that actually has a
-  // logged row, newest first, plus "All time".
   const months = [...new Set(allDates.map(d=>d.slice(0,7)))].sort().reverse();
   const curMonth = today().slice(0,7);
   if(automationTrendMonth===null) automationTrendMonth = months.includes(curMonth) ? curMonth : (months[0] || 'all');
@@ -1758,59 +1839,84 @@ function renderAutomationPanel(){
   const monthOptions = `<option value="all" ${automationTrendMonth==='all'?'selected':''}>All time</option>` +
     months.map(m=>`<option value="${m}" ${m===automationTrendMonth?'selected':''}>${esc(monthLabel(m))}</option>`).join('');
   const trendRows = automationTrendMonth==='all' ? AUTOMATION_LOG : AUTOMATION_LOG.filter(d=>(d.date||'').slice(0,7)===automationTrendMonth);
-
-  const rows = trendRows.map(d=>`<tr>
+  return { snap, snapDate, isToday, sum, totalRepliesSnap, quotedPipelineValue, dateOptions, monthOptions, trendRows };
+}
+// Compatibility shim: several call sites (data reload, date/month pickers)
+// used to just re-render the single Automation panel. Now that its cards live
+// at the top of the Emails and Calls tabs instead, refresh whichever of those
+// two is actually on screen (both are cheap no-ops if their panel div is empty).
+function renderAutomationPanel(){
+  if(typeof renderCorrespondencePanel==='function') renderCorrespondencePanel();
+  if(typeof renderCallsPanel==='function') renderCallsPanel();
+}
+// channel: 'linkedin' (feeds the Calls tab — LinkedIn connections are who ends
+// up in the call queue) or 'email' (feeds the Emails tab). Each renders its
+// own snapshot cards, channel-only counters, and a channel-only history table
+// — LinkedIn and Email numbers are never mixed in the same tile.
+function renderChannelAutomationCards(channel){
+  const p = automationSnapshotPrep();
+  if(!p){
+    return automationLogLoaded
+      ? '<div class="muted" style="padding:10px 2px;">No automation activity logged yet — the daily outreach job writes here once it has run.</div>'
+      : '<div class="muted" style="padding:10px 2px;">Loading automation data…</div>';
+  }
+  const { snap, snapDate, isToday, sum, totalRepliesSnap, quotedPipelineValue, dateOptions, monthOptions, trendRows } = p;
+  const snapshot = `
+    <div class="card good"><div class="icon">💰</div><div class="num">${fmtMoney(quotedPipelineValue)}</div><div class="lbl">Quoted pipeline value</div></div>
+    <div class="card"><div class="icon">👥</div><div class="num">${snap.active_contacts}</div><div class="lbl">Active contacts</div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${totalRepliesSnap}</div><div class="lbl">Replies ${isToday?'today':'this day'}</div></div>
+    <div class="card muted-card"><div class="icon">🗄️</div><div class="num">${snap.archived}</div><div class="lbl">Leads archived ${isToday?'today':'this day'}</div></div>
+  `;
+  const isEmail = channel==='email';
+  const channelCards = isEmail ? `
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_sent')"><div class="icon">✉️</div><div class="num">${snap.emails_sent}</div><div class="lbl">First emails sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','email_followups')"><div class="icon">📧</div><div class="num">${snap.email_followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.email_replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
+  ` : `
+    <div class="card good" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_invites')"><div class="icon">🤝</div><div class="num">${snap.invites_sent}</div><div class="lbl">New invites sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card" style="cursor:pointer;" onclick="showAutomationRecipients('${esc(snapDate)}','li_followups')"><div class="icon">🔁</div><div class="num">${snap.followups_sent}</div><div class="lbl">Follow-ups sent${isToday?' today':''} <span style="text-decoration:underline;">— view list</span></div></div>
+    <div class="card good"><div class="icon">💬</div><div class="num">${snap.replies}</div><div class="lbl">Replies${isToday?' today':''}</div></div>
+  `;
+  const rows = trendRows.map(d=> isEmail ? `<tr>
       <td style="padding:6px 8px;">${esc(d.date)}</td>
-      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_invites')">${d.invites_sent}</td>
-      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_followups')">${d.followups_sent}</td>
-      <td style="padding:6px 8px;">${d.replies}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_sent')">${d.emails_sent}</td>
       <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','email_followups')">${d.email_followups_sent}</td>
       <td style="padding:6px 8px;">${d.email_replies}</td>
       <td style="padding:6px 8px;">${d.archived}</td><td style="padding:6px 8px;">${fmtMoney(d.pipeline_value)}</td>
+    </tr>` : `<tr>
+      <td style="padding:6px 8px;">${esc(d.date)}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_invites')">${d.invites_sent}</td>
+      <td style="padding:6px 8px;cursor:pointer;text-decoration:underline;" onclick="showAutomationRecipients('${esc(d.date)}','li_followups')">${d.followups_sent}</td>
+      <td style="padding:6px 8px;">${d.replies}</td>
+      <td style="padding:6px 8px;">${d.archived}</td><td style="padding:6px 8px;">${fmtMoney(d.pipeline_value)}</td>
     </tr>`).join('');
-
-  panel.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+  return `
+    <div class="automation-section-head" style="margin-top:0;">${isEmail?'✉️ Email automation':'🤝 LinkedIn automation'} <span class="muted" style="font-weight:400;font-size:11.5px;">${isEmail?'— first emails always wait for your go-ahead; only follow-ups and replies happen on their own':'— feeds the call queue below once a connection is made'}</span></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
       <label class="muted" style="font-size:12px;">Showing:</label>
       <select onchange="setAutomationSnapshotDate(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${dateOptions}</select>
     </div>
     <div class="cards compact">${snapshot}</div>
-    <div class="muted" style="margin-top:6px;font-size:11.5px;">Quoted pipeline value = the Deal Value on every contact currently at the "Quoted" stage — deals still waiting on a decision. Once a deal closes, it drops out of this number and its value shows instead on the <a href="#" onclick="event.preventDefault();switchDashboardTab('closed');return false;" style="color:var(--navy);text-decoration:underline;">Closed Deals</a> tab.</div>
-
-    <div class="automation-section-head">🤝 LinkedIn outreach</div>
-    <div class="cards compact">${linkedinCards}</div>
-
-    <div class="automation-section-head">✉️ Email outreach <span class="muted" style="font-weight:400;font-size:11.5px;">— first emails always wait for your go-ahead; only follow-ups and replies happen on their own</span></div>
-    <div class="cards compact">${emailCards}</div>
-
-    <div class="muted" style="margin-top:12px;font-size:12px;">Correspondence detail and call queue moved to their own tabs — <a href="#" onclick="event.preventDefault();switchDashboardTab('correspondence');return false;" style="color:var(--navy);text-decoration:underline;">📧 Emails</a> and <a href="#" onclick="event.preventDefault();switchDashboardTab('calls');return false;" style="color:var(--navy);text-decoration:underline;">📞 Calls</a>.</div>
-
-    <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
+    <div class="cards compact" style="margin-top:6px;">${channelCards}</div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px;">Quoted pipeline value = the Deal Value on every contact currently at the "Quoted" stage. Once a deal closes, its value shows instead on the <a href="#" onclick="event.preventDefault();switchDashboardTab('closed');return false;" style="color:var(--navy);text-decoration:underline;">Closed Deals</a> tab.</div>
+    <div style="margin-top:10px;font-size:12.5px;color:var(--gray);">Last 7 days: ${isEmail ? `${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('email_replies')} replies` : `${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('replies')} replies`} · ${sum('archived')} archived</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
       <label class="muted" style="font-size:12px;">History for:</label>
       <select onchange="setAutomationTrendMonth(this.value)" style="font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;">${monthOptions}</select>
-      <span class="muted" style="font-size:11.5px;">Click any underlined number below to see exactly who.</span>
+      <span class="muted" style="font-size:11.5px;">Click any underlined number to see exactly who.</span>
     </div>
-    <div style="overflow-x:auto;margin-top:10px;">
+    <div style="overflow-x:auto;margin-top:8px;margin-bottom:4px;">
       <table class="mini-table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
-        <thead>
-          <tr style="text-align:left;color:var(--gray);">
-            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Date</th>
-            <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">LinkedIn</th>
-            <th colspan="3" style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border);">Email</th>
-            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Archived</th>
-            <th rowspan="2" style="padding:6px 8px;vertical-align:bottom;">Quoted Value</th>
-          </tr>
-          <tr style="text-align:left;color:var(--gray);font-size:11px;">
-            <th style="padding:2px 8px;">Invites</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
-            <th style="padding:2px 8px;">Sent</th><th style="padding:2px 8px;">Follow-ups</th><th style="padding:2px 8px;">Replies</th>
-          </tr>
-        </thead>
-        <tbody>${rows || '<tr><td colspan="9" style="padding:12px 8px;" class="muted">No logged days in this month.</td></tr>'}</tbody>
+        <thead><tr style="text-align:left;color:var(--gray);">
+          <th style="padding:4px 8px;">Date</th>
+          ${isEmail ? '<th style="padding:4px 8px;">Sent</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>' : '<th style="padding:4px 8px;">Invites</th><th style="padding:4px 8px;">Follow-ups</th><th style="padding:4px 8px;">Replies</th>'}
+          <th style="padding:4px 8px;">Archived</th><th style="padding:4px 8px;">Quoted Value</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" style="padding:12px 8px;" class="muted">No logged days in this month.</td></tr>'}</tbody>
       </table>
     </div>
-    ${snap.notes ? `<div class="muted" style="margin-top:10px;">📝 ${esc(snap.notes)}</div>` : ''}
+    ${snap.notes ? `<div class="muted" style="margin-top:6px;">📝 ${esc(snap.notes)}</div>` : ''}
+    <div style="border-bottom:2px solid var(--border);margin:14px 0 14px;"></div>
   `;
 }
 
@@ -2014,7 +2120,9 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   lastEmailReplyDate:'fldxZ7tweOPjLELl4', lastEmailSnippet:'fldfzC9877DtjluBx',
   lastEmailFrom:'fldgXSWX7FITb7BGG', replyAskingForQuote:'fldCNUx7oUjAmDhwv',
   emailThread:'fldi8HzwCGjcRAINN', pendingEmailInstruction:'fldUfL8Vo34NFHVdm',
-  pendingEmailInstructionDate:'fld0yeFhMaxBVHPq6' };
+  pendingEmailInstructionDate:'fld0yeFhMaxBVHPq6',
+  outgoingReplyDraft:'fldsQCbBXydXeNm1t', outgoingReplyQueuedAt:'fldFBuZHEhdiFlsiF',
+  outgoingReplySendError:'fldOGzKQHUa8t9N3j' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -2063,7 +2171,10 @@ function fromAirtable(rec){
     reply_asking_for_quote: !!f[F.replyAskingForQuote],
     email_thread: f[F.emailThread] || '',
     pending_email_instruction: f[F.pendingEmailInstruction] || '',
-    pending_email_instruction_date: f[F.pendingEmailInstructionDate] || ''
+    pending_email_instruction_date: f[F.pendingEmailInstructionDate] || '',
+    outgoing_reply_draft: f[F.outgoingReplyDraft] || '',
+    outgoing_reply_queued_at: f[F.outgoingReplyQueuedAt] || '',
+    outgoing_reply_send_error: f[F.outgoingReplySendError] || ''
   };
 }
 function toAirtableFields(r){
