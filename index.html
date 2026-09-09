@@ -1249,7 +1249,8 @@ function loadAutomationLog(){
         archived: Number(f['Leads Archived'])||0, pipeline_value: Number(f['Active Pipeline Value'])||0,
         active_contacts: Number(f['Active Contacts Total'])||0, notes: f['Notes'] || '',
         emails_sent: Number(f['Emails Sent'])||0, email_followups_sent: Number(f['Email Follow-ups Sent'])||0,
-        email_replies: Number(f['Email Replies Received'])||0
+        email_replies: Number(f['Email Replies Received'])||0,
+        correspondence_synced_at: f['Correspondence Last Synced'] || ''
       };
     }).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     automationLogLoaded = true;
@@ -1302,6 +1303,68 @@ function showAutomationRecipients(dateStr, metricKey){
   `;
   document.getElementById('overlay').classList.add('show');
   document.getElementById('overlay').scrollTop = 0;
+}
+// Small 3-segment "how far along" bar for a contact's email engagement — Low fills
+// 1 segment, Medium fills 2, Positive fills all 3. Purely visual, gives Mohammad the
+// "nice pattern" read at a glance without having to parse text.
+function engagementBar(tier){
+  const filled = tier==='Positive' ? 3 : tier==='Medium' ? 2 : tier==='Low' ? 1 : 0;
+  const color = tier==='Positive' ? 'var(--sage)' : tier==='Medium' ? '#c99a3a' : '#b3574a';
+  let segs = '';
+  for(let i=0;i<3;i++){
+    segs += `<span style="flex:1;height:5px;border-radius:3px;background:${i<filled?color:'var(--border)'};"></span>`;
+  }
+  return `<div style="display:flex;gap:3px;width:56px;">${segs}</div>`;
+}
+const ENGAGEMENT_TIER_META = {
+  Positive: {label:'Positive — active back-and-forth', color:'var(--sage)', icon:'🟢'},
+  Medium: {label:'Medium — replied, now quiet', color:'#c99a3a', icon:'🟡'},
+  Low: {label:'Low — no reply yet', color:'#b3574a', icon:'🔴'}
+};
+function correspondenceRow(r){
+  const tierMeta = ENGAGEMENT_TIER_META[r.email_engagement];
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="openModal(${r.id});">
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.company||'—')}</div>
+      <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name||'—')}${r.last_email_snippet ? ' — “'+esc(r.last_email_snippet)+'”' : ''}</div>
+    </div>
+    <div style="flex:none;text-align:right;font-size:11px;color:var(--gray);">
+      <div>${r.last_email_from==='Them' ? '↙ them' : '↗ us'} · ${esc(r.last_email_reply_date || r.email_outreach_date || '—')}</div>
+      <div style="margin-top:3px;">${tierMeta ? engagementBar(r.email_engagement) : ''}</div>
+    </div>
+  </div>`;
+}
+function renderCorrespondencePanel(){
+  const emailed = DATA.filter(r=>!r.archived && !r.deleted && r.email_outreach_sent);
+  if(!emailed.length) return '';
+  const quoteAsks = emailed.filter(r=>r.reply_asking_for_quote);
+  const positive = emailed.filter(r=>r.email_engagement==='Positive');
+  const medium = emailed.filter(r=>r.email_engagement==='Medium');
+  const low = emailed.filter(r=>r.email_engagement==='Low');
+  const pending = emailed.filter(r=>!r.email_engagement);
+  const sortFn = (a,b)=>(b.last_email_reply_date||b.email_outreach_date||'').localeCompare(a.last_email_reply_date||a.email_outreach_date||'');
+  [positive,medium,low,pending].forEach(list=>list.sort(sortFn));
+  const syncedAt = AUTOMATION_LOG[0] && AUTOMATION_LOG[0].correspondence_synced_at;
+  const col = (title, icon, list, emptyText) => `
+    <div style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:8px 10px;background:var(--panel2, #f7f4ee);font-weight:700;font-size:12.5px;border-bottom:1px solid var(--border);">${icon} ${esc(title)} <span class="muted" style="font-weight:400;">(${list.length})</span></div>
+      <div style="max-height:340px;overflow-y:auto;">
+        ${list.length ? list.map(correspondenceRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
+      </div>
+    </div>`;
+  return `
+    <div class="automation-section-head">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
+    ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
+      ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="openModal(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
+    </div>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${col('Positive', '🟢', positive, 'No active back-and-forth right now.')}
+      ${col('Medium', '🟡', medium, 'Nothing that has gone quiet.')}
+      ${col('Low', '🔴', low, 'No unanswered first emails.')}
+      ${pending.length ? col('Awaiting first sync', '⏳', pending, '') : ''}
+    </div>
+  `;
 }
 function renderAutomationPanel(){
   const panel = document.getElementById('panel-automation');
@@ -1388,6 +1451,8 @@ function renderAutomationPanel(){
 
     <div class="automation-section-head">✉️ Email outreach <span class="muted" style="font-weight:400;font-size:11.5px;">— first emails always wait for your go-ahead; only follow-ups and replies happen on their own</span></div>
     <div class="cards compact">${emailCards}</div>
+
+    ${renderCorrespondencePanel()}
 
     <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
@@ -1612,7 +1677,10 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   autoFollowupCount:'fldfhLcr71mkXtw9G', lastAutoFollowup:'fldpoQFyURlQdMg8G', archivedReason:'fldBA8IkgW5rcWNtj',
   emailOutreachSent:'fldcDGv3bMjpu3jDA', emailOutreachDate:'fldvq4OCgO8lPinCM',
   emailFollowupCount:'fldh1uOxEdva2VOqZ', lastEmailFollowup:'fldZr3rPrYBAWMUqt',
-  linkedinInviteDate:'fldM6nEIkWp1Rmjqq' };
+  linkedinInviteDate:'fldM6nEIkWp1Rmjqq',
+  emailEngagement:'fldDNrSIyOvLfo4Vg', emailReplyCount:'flddcMEg09E7IaCYz',
+  lastEmailReplyDate:'fldxZ7tweOPjLELl4', lastEmailSnippet:'fldfzC9877DtjluBx',
+  lastEmailFrom:'fldgXSWX7FITb7BGG', replyAskingForQuote:'fldCNUx7oUjAmDhwv' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1652,7 +1720,13 @@ function fromAirtable(rec){
     email_outreach_date: f[F.emailOutreachDate] || '',
     email_followup_count: Number(f[F.emailFollowupCount]) || 0,
     last_email_followup: f[F.lastEmailFollowup] || '',
-    linkedin_invite_date: f[F.linkedinInviteDate] || ''
+    linkedin_invite_date: f[F.linkedinInviteDate] || '',
+    email_engagement: (f[F.emailEngagement] && f[F.emailEngagement].name) || '',
+    email_reply_count: Number(f[F.emailReplyCount]) || 0,
+    last_email_reply_date: f[F.lastEmailReplyDate] || '',
+    last_email_snippet: f[F.lastEmailSnippet] || '',
+    last_email_from: (f[F.lastEmailFrom] && f[F.lastEmailFrom].name) || '',
+    reply_asking_for_quote: !!f[F.replyAskingForQuote]
   };
 }
 function toAirtableFields(r){
@@ -2686,6 +2760,20 @@ function openModal(id){
       <label style="display:flex;align-items:center;gap:6px;margin-top:12px;font-weight:500;color:#1c2230;cursor:pointer;">
       </label>
     </div>
+
+    ${(!isNew && r.email_outreach_sent) ? `
+    <div class="modal-section">
+      <div class="modal-section-head">📧 Email correspondence <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— kept live from Gmail by the Email Conversation Sync job</span></div>
+      ${r.reply_asking_for_quote ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px;color:#8a5a1e;font-weight:600;">💰 Their latest reply looks like it's asking about pricing/quotation — decide what to send before replying.</div>` : ''}
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:700;font-size:13px;">${r.email_engagement ? (ENGAGEMENT_TIER_META[r.email_engagement]?ENGAGEMENT_TIER_META[r.email_engagement].icon:'') + ' ' + esc(r.email_engagement) : '⏳ Awaiting first sync'}</div>
+          ${r.email_engagement ? engagementBar(r.email_engagement) : ''}
+        </div>
+        <div class="muted" style="font-size:12px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'} from them · last message ${r.last_email_from==='Them'?'from them':'from us'}${(r.last_email_reply_date||r.email_outreach_date)?' on '+esc(r.last_email_reply_date||r.email_outreach_date):''}</div>
+      </div>
+      ${r.last_email_snippet ? `<div class="muted" style="margin-top:8px;font-size:12.5px;font-style:italic;">“${esc(r.last_email_snippet)}”</div>` : ''}
+    </div>` : ''}
 
     ${(isNew ? false : (r.status==='Not Contacted' || r.skip_reason)) ? `
     <div class="modal-section">
