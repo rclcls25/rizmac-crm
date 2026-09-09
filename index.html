@@ -1773,13 +1773,13 @@ function saveCallLog(id){
 // "Deleted" permanently in Airtable rather than removing the row, which is
 // exactly what stops a re-run of lead-gen from ever recreating them.
 // ============================================================
-function cleanupRow(r){
+function cleanupRow(r, reasonLabel){
   return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
     <div style="flex:1;min-width:0;cursor:pointer;" onclick="openModal(${r.id});">
       <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.company||'—')}</div>
       <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name||'—')}${r.country?' · '+esc(r.country):''}${r.last_contact?' · last contact '+esc(r.last_contact):''}</div>
     </div>
-    <button class="btn ghost small" style="border-color:var(--red);color:var(--red);flex:none;" title="Delete permanently — kept as a do-not-contact record" onclick="deleteRecord(${r.id});">🗑</button>
+    <button class="btn ghost small" style="border-color:var(--red);color:var(--red);flex:none;" title="Delete permanently — shows a preview first" onclick="deleteFromCleanup(${r.id},'${esc(reasonLabel||'').replace(/'/g,"\\'")}');">🗑</button>
   </div>`;
 }
 function renderCleanupPanel(){
@@ -1799,7 +1799,7 @@ function renderCleanupPanel(){
       <div style="padding:8px 10px;background:var(--panel2, #f7f4ee);font-weight:700;font-size:12.5px;border-bottom:1px solid var(--border);">${icon} ${esc(title)} <span class="muted" style="font-weight:400;">(${list.length})</span></div>
       ${note ? `<div class="muted" style="font-size:11px;padding:6px 10px 0;">${esc(note)}</div>` : ''}
       <div style="max-height:360px;overflow-y:auto;">
-        ${list.length ? list.map(cleanupRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
+        ${list.length ? list.map(r=>cleanupRow(r,title)).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
       </div>
     </div>`;
   panel.innerHTML = `
@@ -3442,10 +3442,11 @@ function saveModal(id){
   if(autoSetFollowup){ alert('No follow-up date was set, so one was scheduled automatically for '+r.next_followup+' (3 days out). Edit this contact anytime to change it.'); }
 }
 
-function deleteRecord(id){
-  const r = DATA.find(x=>x.id===id);
-  if(!r) return;
-  if(!confirm('Delete '+r.name+'? This removes them from your active list and marks them as a permanent do-not-contact record — nothing is removed from Airtable, so future LinkedIn lead searches will know to skip them. You can restore anytime from "Show deleted".')) return;
+// Shared deletion body — used by deleteRecord() (generic, simple confirm) and
+// deleteFromCleanup() (richer confirm with a preview of who/why, so a slip on
+// the Cleanup tab's 🗑 doesn't permanently remove the wrong person). Neither
+// function double-confirms; each does its own single confirm() before calling this.
+function performDelete(r){
   r.record_status = 'Deleted';
   r.archived = false;
   r.deleted = true;
@@ -3454,6 +3455,31 @@ function deleteRecord(id){
   pushRecord(r, false);
   closeModal();
   applyFilters();
+}
+function deleteRecord(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm('Delete '+r.name+'? This removes them from your active list and marks them as a permanent do-not-contact record — nothing is removed from Airtable, so future LinkedIn lead searches will know to skip them. You can restore anytime from "Show deleted".')) return;
+  performDelete(r);
+}
+// Used only from the Cleanup Review tab — shows exactly who and why they were
+// flagged before deleting, since a permanent do-not-contact delete from a
+// review list deserves a clearer look than the generic one-line confirm.
+function deleteFromCleanup(id, reasonLabel){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  const lines = [
+    'Permanently delete this contact?',
+    '',
+    'Company: ' + (r.company||'—'),
+    'Contact: ' + (r.name||'—') + (r.country?' · '+r.country:''),
+    'Flagged as: ' + (reasonLabel||'—'),
+    r.last_contact ? ('Last contact: ' + r.last_contact) : '',
+    '',
+    'This marks them a permanent do-not-contact record — they can never be re-added, even by a future lead import. Nothing is removed from Airtable; you can restore anytime from "Show deleted".'
+  ].filter(Boolean);
+  if(!confirm(lines.join('\n'))) return;
+  performDelete(r);
 }
 function archiveRecord(id){
   const r = DATA.find(x=>x.id===id);
