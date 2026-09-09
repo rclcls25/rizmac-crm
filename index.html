@@ -1323,7 +1323,7 @@ const ENGAGEMENT_TIER_META = {
 };
 function correspondenceRow(r){
   const tierMeta = ENGAGEMENT_TIER_META[r.email_engagement];
-  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="openModal(${r.id});">
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="showEmailThread(${r.id});">
     <div style="flex:1;min-width:0;">
       <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.company||'—')}</div>
       <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name||'—')}${r.last_email_snippet ? ' — “'+esc(r.last_email_snippet)+'”' : ''}</div>
@@ -1333,6 +1333,85 @@ function correspondenceRow(r){
       <div style="margin-top:3px;">${tierMeta ? engagementBar(r.email_engagement) : ''}</div>
     </div>
   </div>`;
+}
+// ============================================================
+// DEDICATED EMAIL-ONLY POPUP — Mohammad was explicit that clicking
+// a correspondence row must NOT open the full contact-editor modal
+// (he already has that from the CRM proper). This is a separate,
+// lightweight, chat-style view: just the email back-and-forth for
+// this one contact, plus a box where he can leave an instruction
+// for the sync job to pick up ("send them the standard price list",
+// "wait, I'll call them first") without ever letting the automation
+// draft or send anything itself.
+// ============================================================
+function parseEmailThread(text){
+  // Each line the sync job writes looks like "2026-09-05 | Us: <snippet>" or
+  // "2026-09-08 | Them: <snippet>" — oldest first. Tolerate blank/odd lines.
+  return (text||'').split('\n').map(line=>{
+    const m = line.match(/^\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(Us|Them)\s*:\s*(.*)$/i);
+    if(!m) return null;
+    return { date:m[1], from:m[2], text:m[3] };
+  }).filter(Boolean);
+}
+function emailThreadBubbles(r){
+  const msgs = parseEmailThread(r.email_thread);
+  if(!msgs.length){
+    return `<div class="muted" style="padding:16px 4px;font-size:12.5px;">${r.email_outreach_sent ? 'No message history synced yet — the Email Conversation Sync job checks Gmail every few hours and will fill this in.' : 'No emails sent to this contact yet.'}</div>`;
+  }
+  return msgs.map(m=>{
+    const fromThem = m.from.toLowerCase()==='them';
+    return `<div style="display:flex;justify-content:${fromThem?'flex-start':'flex-end'};margin:6px 0;">
+      <div style="max-width:78%;background:${fromThem?'var(--panel2,#f3f0e9)':'#dfeee2'};border-radius:12px;padding:8px 12px;font-size:12.5px;line-height:1.4;">
+        <div style="font-weight:700;font-size:10.5px;color:var(--gray);margin-bottom:2px;">${fromThem?'Them':'Us'} · ${esc(m.date)}</div>
+        <div>${esc(m.text)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function showEmailThread(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  modalReturnTo = null;
+  const tierMeta = ENGAGEMENT_TIER_META[r.email_engagement];
+  document.getElementById('modalBody').innerHTML = `
+    <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
+    <h2 style="margin-bottom:2px;">✉️ ${esc(r.name||'—')}</h2>
+    <div class="sub">${esc(r.company||'—')}${r.email?' · '+esc(r.email):''}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+      <div style="font-weight:700;font-size:12.5px;">${r.email_engagement ? (tierMeta?tierMeta.icon:'') + ' ' + esc(r.email_engagement) : '⏳ Awaiting first sync'}</div>
+      ${r.email_engagement ? engagementBar(r.email_engagement) : ''}
+      <div class="muted" style="font-size:11.5px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'} from them</div>
+    </div>
+    ${r.reply_asking_for_quote ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px;color:#8a5a1e;font-weight:600;">💰 Their latest reply looks like it's asking about pricing/quotation — nothing has been sent back. Decide what to quote, then either send it yourself or leave an instruction below.</div>` : ''}
+    <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px;max-height:38vh;overflow-y:auto;background:var(--panel,#fff);">
+      ${emailThreadBubbles(r)}
+    </div>
+    <div style="margin-top:14px;">
+      <label style="font-size:12px;font-weight:600;">📝 Instruction for next sync ${r.pending_email_instruction_date ? '<span class=\"muted\" style=\"font-weight:400;\">— left '+esc(r.pending_email_instruction_date)+'</span>' : ''}</label>
+      <textarea id="emailInstructionBox" rows="3" placeholder="e.g. 'Send them the standard uniform price list' or 'I'll call them first, don't follow up by email yet'" style="width:100%;margin-top:5px;font-size:12.5px;">${esc(r.pending_email_instruction||'')}</textarea>
+      <div class="muted" style="font-size:11px;margin-top:3px;">This is only a note for you/the sync job to read — nothing gets sent automatically. Leave it blank and save to clear it.</div>
+    </div>
+    <div class="modal-actions">
+      <div><a href="#" onclick="event.preventDefault();closeModal();openModal(${r.id});" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
+      <div><button class="btn" onclick="closeModal()">Close</button><button class="btn sage" onclick="saveEmailInstruction(${r.id})">Save instruction</button></div>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
+}
+function saveEmailInstruction(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  const text = document.getElementById('emailInstructionBox').value.trim();
+  r.pending_email_instruction = text;
+  r.pending_email_instruction_date = text ? today() : '';
+  if(!r._rid){ closeModal(); return; }
+  const fields = {};
+  fields[F.pendingEmailInstruction] = text;
+  fields[F.pendingEmailInstructionDate] = text ? today() : null;
+  airtablePatch(r._rid, fields).catch(e=>console.error('Save instruction failed', e));
+  closeModal();
+  alert(text ? 'Instruction saved — it will show up in the sync job\'s next report.' : 'Instruction cleared.');
 }
 function renderCorrespondencePanel(){
   const emailed = DATA.filter(r=>!r.archived && !r.deleted && r.email_outreach_sent);
@@ -1356,7 +1435,7 @@ function renderCorrespondencePanel(){
     <div class="automation-section-head">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
     ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
-      ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="openModal(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
+      ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="showEmailThread(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
     </div>` : ''}
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       ${col('Positive', '🟢', positive, 'No active back-and-forth right now.')}
@@ -1365,6 +1444,139 @@ function renderCorrespondencePanel(){
       ${pending.length ? col('Awaiting first sync', '⏳', pending, '') : ''}
     </div>
   `;
+}
+// ============================================================
+// CALLS SYSTEM — the LinkedIn/email channels are automated; calls
+// never can be (Mohammad has to actually pick up the phone), so this
+// is built differently on purpose: instead of a sync job feeding it,
+// this is a live queue of who's due a call (from each contact's own
+// Next Follow-up date, scoped to contacts who haven't said "email/
+// WhatsApp only"), plus a dedicated call-log popup — mirroring the
+// email system's shape (queue → click a contact → see the history →
+// log what happened) so both channels feel like one consistent
+// system, without pretending calls can be auto-tracked like emails.
+// ============================================================
+const CALL_OUTCOMES = [
+  {key:'positive', label:'✅ Answered — positive, moving forward'},
+  {key:'followup', label:'🔁 Answered — needs another follow-up'},
+  {key:'noanswer', label:'📵 No answer'},
+  {key:'voicemail', label:'📼 Voicemail left'},
+  {key:'notreachable', label:'❌ Wrong number / not reachable'},
+  {key:'notinterested', label:'🚫 Not interested'}
+];
+function isCallable(r){
+  // Skip anyone who's explicitly said they only want email/WhatsApp — call
+  // everyone else (including contacts with no stated preference yet).
+  const pref = r.comm_pref || [];
+  if(!pref.length) return true;
+  if(pref.includes('Mobile')) return true;
+  return !(pref.includes('Email') || pref.includes('WhatsApp'));
+}
+function callHistory(r){
+  return (r.conversation_log||[]).filter(l=>(l.note||'').startsWith('📞')).slice().reverse();
+}
+function callRow(r){
+  const d = r.next_followup ? daysUntil(r.next_followup) : null;
+  const badge = d===null ? '' : d<0 ? `<span style="color:var(--red);font-weight:700;">${Math.abs(d)}d overdue</span>` : d===0 ? `<span style="color:#c99a3a;font-weight:700;">Today</span>` : `<span class="muted">in ${d}d</span>`;
+  const lastCall = callHistory(r)[0];
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="showCallLog(${r.id});">
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.company||'—')}</div>
+      <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name||'—')}${r.phone?' · '+esc(r.phone):''}${lastCall?' — last call '+esc(lastCall.date):''}</div>
+    </div>
+    <div style="flex:none;text-align:right;font-size:11px;">${badge}</div>
+  </div>`;
+}
+function renderCallsPanel(){
+  const active = DATA.filter(r=>!r.archived && !r.deleted && isCallable(r) && r.next_followup);
+  if(!active.length) return '';
+  const overdue = active.filter(r=>daysUntil(r.next_followup)<0).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
+  const dueToday = active.filter(r=>daysUntil(r.next_followup)===0);
+  const upcoming = active.filter(r=>{ const d=daysUntil(r.next_followup); return d>0 && d<=3; }).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
+  const col = (title, icon, list, emptyText) => `
+    <div style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:8px 10px;background:var(--panel2, #f7f4ee);font-weight:700;font-size:12.5px;border-bottom:1px solid var(--border);">${icon} ${esc(title)} <span class="muted" style="font-weight:400;">(${list.length})</span></div>
+      <div style="max-height:340px;overflow-y:auto;">
+        ${list.length ? list.map(callRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
+      </div>
+    </div>`;
+  return `
+    <div class="automation-section-head">📞 Calls — your live call queue <span class="muted" style="font-weight:400;font-size:11px;">— built from each contact's Next Follow-up date; you make the call, then log it here</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${col('Overdue', '🔴', overdue, 'Nothing overdue.')}
+      ${col('Due today', '🟡', dueToday, 'Nothing due today.')}
+      ${col('Next 3 days', '🟢', upcoming, 'Nothing coming up in the next 3 days.')}
+    </div>
+  `;
+}
+function callLogEntryText(outcomeKey, notes){
+  const meta = CALL_OUTCOMES.find(o=>o.key===outcomeKey);
+  return '📞 ' + (meta?meta.label.replace(/^\S+\s/,''):outcomeKey) + (notes?': '+notes:'');
+}
+function showCallLog(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  modalReturnTo = null;
+  const history = callHistory(r);
+  const historyHtml = history.length ? history.map(l=>`
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:12.5px;">
+      <div style="font-weight:700;font-size:11px;color:var(--gray);">${esc(l.date)}</div>
+      <div>${esc(l.note.replace(/^📞\s*/,''))}</div>
+    </div>`).join('') : `<div class="muted" style="padding:14px;font-size:12.5px;">No calls logged with this contact yet.</div>`;
+  const outcomeOptions = CALL_OUTCOMES.map(o=>`<option value="${o.key}">${o.label}</option>`).join('');
+  const defaultNext = (()=>{ const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+  document.getElementById('modalBody').innerHTML = `
+    <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
+    <h2 style="margin-bottom:2px;">📞 ${esc(r.name||'—')}</h2>
+    <div class="sub">${esc(r.company||'—')}${r.phone?' · <a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>':''}</div>
+    <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;max-height:30vh;overflow-y:auto;">
+      ${historyHtml}
+    </div>
+    <div style="margin-top:14px;">
+      <label style="font-size:12px;font-weight:600;">Log this call</label>
+      <select id="callOutcomeBox" style="width:100%;margin-top:5px;font-size:12.5px;">${outcomeOptions}</select>
+      <textarea id="callNotesBox" rows="2" placeholder="What happened / what did they say?" style="width:100%;margin-top:6px;font-size:12.5px;"></textarea>
+      <div style="margin-top:6px;"><label style="font-size:12px;">Next follow-up date</label><input type="date" id="callNextFollowup" value="${esc(defaultNext)}" style="margin-left:8px;font-size:12.5px;"></div>
+    </div>
+    <div class="modal-actions">
+      <div><a href="#" onclick="event.preventDefault();closeModal();openModal(${r.id});" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
+      <div><button class="btn" onclick="closeModal()">Close</button><button class="btn sage" onclick="saveCallLog(${r.id})">Save call</button></div>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('overlay').scrollTop = 0;
+}
+function saveCallLog(id){
+  const r = DATA.find(x=>x.id===id);
+  if(!r) return;
+  const outcomeKey = document.getElementById('callOutcomeBox').value;
+  const notes = document.getElementById('callNotesBox').value.trim();
+  const nextFollowup = document.getElementById('callNextFollowup').value;
+  const outcomeMeta = CALL_OUTCOMES.find(o=>o.key===outcomeKey);
+  const prevLog = (r.conversation_log||[]).slice();
+  const prevLast = r.last_contact, prevLastType = r.last_contact_type, prevNext = r.next_followup;
+  r.conversation_log = r.conversation_log || [];
+  r.conversation_log.push({date: today(), note: callLogEntryText(outcomeKey, notes)});
+  r.last_contact = today();
+  r.last_contact_type = 'Call';
+  if(outcomeKey==='notinterested'){ r.next_followup = ''; }
+  else { r.next_followup = nextFollowup || ''; }
+  const fields = {};
+  fields[F.log] = flattenLog(r.conversation_log);
+  fields[F.lastContact] = r.last_contact;
+  fields[F.lastContactType] = r.last_contact_type;
+  fields[F.nextFollowup] = r.next_followup || null;
+  if(outcomeKey==='notinterested') fields[F.status] = 'Not Interested';
+  if(outcomeKey==='notinterested') r.status = 'Not Interested';
+  closeModal();
+  applyFilters();
+  renderCards();
+  renderAutomationPanel();
+  airtablePatch(r._rid, fields).catch(err=>{
+    r.conversation_log = prevLog; r.last_contact = prevLast; r.last_contact_type = prevLastType; r.next_followup = prevNext;
+    applyFilters(); renderCards(); renderAutomationPanel();
+    alert('Could not save this call log: ' + err.message);
+  });
 }
 function renderAutomationPanel(){
   const panel = document.getElementById('panel-automation');
@@ -1453,6 +1665,8 @@ function renderAutomationPanel(){
     <div class="cards compact">${emailCards}</div>
 
     ${renderCorrespondencePanel()}
+
+    ${renderCallsPanel()}
 
     <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
@@ -1680,7 +1894,9 @@ const F = { name:'fldBK5OlZZGzl3iZi', title:'fldtUeswJE9XIxbwS', company:'fld7Hw
   linkedinInviteDate:'fldM6nEIkWp1Rmjqq',
   emailEngagement:'fldDNrSIyOvLfo4Vg', emailReplyCount:'flddcMEg09E7IaCYz',
   lastEmailReplyDate:'fldxZ7tweOPjLELl4', lastEmailSnippet:'fldfzC9877DtjluBx',
-  lastEmailFrom:'fldgXSWX7FITb7BGG', replyAskingForQuote:'fldCNUx7oUjAmDhwv' };
+  lastEmailFrom:'fldgXSWX7FITb7BGG', replyAskingForQuote:'fldCNUx7oUjAmDhwv',
+  emailThread:'fldi8HzwCGjcRAINN', pendingEmailInstruction:'fldUfL8Vo34NFHVdm',
+  pendingEmailInstructionDate:'fld0yeFhMaxBVHPq6' };
 // Deal-reference documents (gap #4): which Airtable attachment field backs each reference.
 const DOC_FIELD_IDS = { inquiry: F.inquiryDoc, quote: F.quoteDoc, order: F.orderDoc };
 
@@ -1726,7 +1942,10 @@ function fromAirtable(rec){
     last_email_reply_date: f[F.lastEmailReplyDate] || '',
     last_email_snippet: f[F.lastEmailSnippet] || '',
     last_email_from: (f[F.lastEmailFrom] && f[F.lastEmailFrom].name) || '',
-    reply_asking_for_quote: !!f[F.replyAskingForQuote]
+    reply_asking_for_quote: !!f[F.replyAskingForQuote],
+    email_thread: f[F.emailThread] || '',
+    pending_email_instruction: f[F.pendingEmailInstruction] || '',
+    pending_email_instruction_date: f[F.pendingEmailInstructionDate] || ''
   };
 }
 function toAirtableFields(r){
@@ -2762,17 +2981,12 @@ function openModal(id){
     </div>
 
     ${(!isNew && r.email_outreach_sent) ? `
-    <div class="modal-section">
-      <div class="modal-section-head">📧 Email correspondence <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— kept live from Gmail by the Email Conversation Sync job</span></div>
-      ${r.reply_asking_for_quote ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px;color:#8a5a1e;font-weight:600;">💰 Their latest reply looks like it's asking about pricing/quotation — decide what to send before replying.</div>` : ''}
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div style="font-weight:700;font-size:13px;">${r.email_engagement ? (ENGAGEMENT_TIER_META[r.email_engagement]?ENGAGEMENT_TIER_META[r.email_engagement].icon:'') + ' ' + esc(r.email_engagement) : '⏳ Awaiting first sync'}</div>
-          ${r.email_engagement ? engagementBar(r.email_engagement) : ''}
-        </div>
-        <div class="muted" style="font-size:12px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'} from them · last message ${r.last_email_from==='Them'?'from them':'from us'}${(r.last_email_reply_date||r.email_outreach_date)?' on '+esc(r.last_email_reply_date||r.email_outreach_date):''}</div>
+    <div class="modal-section" style="cursor:pointer;" onclick="closeModal();showEmailThread(${r.id});">
+      <div class="modal-section-head">📧 Email correspondence <span style="text-transform:none;font-weight:500;letter-spacing:0;color:#8a8f9c;">— view full thread →</span></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:12.5px;">${r.email_engagement ? (ENGAGEMENT_TIER_META[r.email_engagement]?ENGAGEMENT_TIER_META[r.email_engagement].icon:'') + ' ' + esc(r.email_engagement) : '⏳ Awaiting first sync'}</span>
+        <span class="muted" style="font-size:11.5px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'}${r.reply_asking_for_quote?' · 💰 asking about pricing':''}</span>
       </div>
-      ${r.last_email_snippet ? `<div class="muted" style="margin-top:8px;font-size:12.5px;font-style:italic;">“${esc(r.last_email_snippet)}”</div>` : ''}
     </div>` : ''}
 
     ${(isNew ? false : (r.status==='Not Contacted' || r.skip_reason)) ? `
