@@ -576,6 +576,9 @@
     <button class="dash-tab" data-tab="closed" onclick="switchDashboardTab('closed')">Closed Deals <span class="tab-badge" id="tabCount-closed">0</span></button>
     <button class="dash-tab" data-tab="activity" onclick="switchDashboardTab('activity')">Activity Log <span class="tab-badge" id="tabCount-activity">0</span></button>
     <button class="dash-tab" data-tab="automation" onclick="switchDashboardTab('automation')">Automation</button>
+    <button class="dash-tab" data-tab="correspondence" onclick="switchDashboardTab('correspondence')">📧 Emails</button>
+    <button class="dash-tab" data-tab="calls" onclick="switchDashboardTab('calls')">📞 Calls</button>
+    <button class="dash-tab" data-tab="cleanup" onclick="switchDashboardTab('cleanup')">🧹 Cleanup <span class="tab-badge" id="tabCount-cleanup">0</span></button>
     <button class="dash-tab" data-tab="analytics" onclick="switchDashboardTab('analytics')">Analytics</button>
     <button class="dash-tab" data-tab="viewstools" onclick="switchDashboardTab('viewstools')">Views &amp; Tools</button>
   </div>
@@ -592,6 +595,9 @@
   <div class="dash-panel" id="panel-closed"></div>
   <div class="dash-panel" id="panel-activity"></div>
   <div class="dash-panel" id="panel-automation"><div class="muted" style="padding:10px 2px;">Loading automation data…</div></div>
+  <div class="dash-panel" id="panel-correspondence"></div>
+  <div class="dash-panel" id="panel-calls"></div>
+  <div class="dash-panel" id="panel-cleanup"></div>
   <div class="dash-panel" id="panel-analytics">
     <div class="charts-grid">
       <div class="chart-card"><h3>Conversion funnel</h3><div style="font-size:10.5px;color:var(--gray);margin:-6px 0 6px;">Each bar = contacts currently at that exact stage (not cumulative)</div><div class="chart-inner-lg"><canvas id="rzFunnelChart"></canvas></div></div>
@@ -822,6 +828,10 @@ let page = 1;
 // the dashboard. Reset to null on any normal contact-modal open. Shared across both
 // tabs since closeModal() is shared too.
 let modalReturnTo = null;
+// Contact id to reopen a specific popup (email thread / call log) against, used
+// alongside modalReturnTo — set right after opening the full record from one of
+// those popups so "closing" the record goes back to the popup, not to nothing.
+let modalReturnToId = null;
 let showArchived = false;
 let showDeleted = false;
 let showWhatsappOnly = false;
@@ -831,11 +841,17 @@ let showColdOnly = false;
 let showNeedsReviewOnly = false;
 let showMeetingSoonOnly = false;
 let showContactedOnly = false;
+// Scope the table to exactly what a dash tab is about, instead of always showing
+// every active contact underneath it regardless of which tab is open.
+let showSystemOnly = false;
+let showAlertsOnly = false;
+function isSystemDriven(r){ return r.status && !['Not Contacted','Needs Your Follow-up','Not Interested'].includes(r.status); }
+function isNeedsAttention(r){ return isStale(r) || isQuotedStale(r) || isCold(r) || isNeedsReview(r) || r.whatsapp_requested; }
 // Single row of tabs (Overview / My Follow-Up / System Status / Needs Attention /
 // Analytics / Views & Tools) — only one panel is shown at a time, switched by clicking
 // a tab, instead of each section independently expanding in place. Remembers the last
 // tab you had open across visits. Filter contacts stays outside this system entirely.
-const DASH_TABS = ['overview','myqueue','system','alerts','company','closed','activity','automation','analytics','viewstools'];
+const DASH_TABS = ['overview','myqueue','system','alerts','company','closed','activity','automation','correspondence','calls','cleanup','analytics','viewstools'];
 let activityLogDate = today();
 function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // null/'' = every panel closed (max space back). A never-visited dashboard defaults to
@@ -846,11 +862,23 @@ function setActivityLogDate(v){ activityLogDate = v || today(); renderCards(); }
 // that already had "overview" saved from before; once you pick/close a tab here,
 // that choice is remembered same as always.)
 let activeDashboardTab = (()=>{ const v = localStorage.getItem('rzActiveDashboardTab_v2'); return v===null ? null : (v || null); })();
+// Each KPI tab now scopes the leads table underneath it to exactly what that tab is
+// about, instead of always showing the full active list regardless of which tab is
+// open — Mohammad was explicit that "Overview" should show everything, but "My
+// Follow-Up"/"System Status"/"Needs Attention" should each show only their own leads.
+function applyTabScope(key){
+  resetAllFilters();
+  if(key==='myqueue'){ document.getElementById('fStatus').value = 'Needs Your Follow-up'; }
+  else if(key==='system'){ showSystemOnly = true; }
+  else if(key==='alerts'){ showAlertsOnly = true; }
+  applyFilters();
+}
 function switchDashboardTab(key){
   // Clicking the tab that's already open closes it, so you can view something and then
   // collapse it back down without hunting for a separate close control.
   activeDashboardTab = (activeDashboardTab===key) ? null : key;
   try{ localStorage.setItem('rzActiveDashboardTab_v2', activeDashboardTab || ''); }catch(e){}
+  applyTabScope(activeDashboardTab);
   applyDashboardTabState();
   // Charts drawn while their panel was display:none end up with a 0x0 canvas;
   // force a resize once the Analytics panel is actually visible.
@@ -861,11 +889,13 @@ function switchDashboardTab(key){
 function closeDashboardTab(){
   activeDashboardTab = null;
   try{ localStorage.setItem('rzActiveDashboardTab_v2',''); }catch(e){}
+  applyTabScope(null);
   applyDashboardTabState();
 }
 const DASH_TAB_TITLES = {
   overview:'Overview', myqueue:'My Follow-Up Queue', system:'System Status',
   alerts:'Needs Attention', company:'By Company', closed:'Closed Deals', activity:'Activity Log', automation:'Automation',
+  correspondence:'Emails', calls:'Calls', cleanup:'Cleanup Review',
   analytics:'Analytics', viewstools:'Views & Tools'
 };
 function applyDashboardTabState(){
@@ -884,13 +914,17 @@ function applyDashboardTabState(){
   // prospects — hide the filter bar + contacts table while any of them is open so the
   // report is the whole screen, not squeezed above a leads list that isn't relevant to it.
   const contactsSection = document.getElementById('rizmacContactsSection');
-  if(contactsSection) contactsSection.style.display = (activeDashboardTab==='automation' || activeDashboardTab==='activity' || activeDashboardTab==='closed') ? 'none' : '';
+  const HIDE_LIST_TABS = ['automation','activity','closed','company','correspondence','calls','cleanup','viewstools','analytics'];
+  if(contactsSection) contactsSection.style.display = HIDE_LIST_TABS.includes(activeDashboardTab) ? 'none' : '';
   // Landing straight on the Automation tab (remembered from last visit) used to show a
   // completely blank panel until the separate Automation Log fetch finished — on a slow
   // connection that could look like the page was broken. Render immediately with whatever
   // we have (a "loading" placeholder if the log hasn't arrived yet, real data if it has);
   // loadAutomationLog() will call this again once the fetch resolves to fill in real data.
   if(activeDashboardTab==='automation' && typeof renderAutomationPanel==='function') renderAutomationPanel();
+  if(activeDashboardTab==='correspondence' && typeof renderCorrespondencePanel==='function') renderCorrespondencePanel();
+  if(activeDashboardTab==='calls' && typeof renderCallsPanel==='function') renderCallsPanel();
+  if(activeDashboardTab==='cleanup' && typeof renderCleanupPanel==='function') renderCleanupPanel();
 }
 let PAGE_SIZE = 50;
 function setPageSize(v){ PAGE_SIZE = parseInt(v,10)||50; page = 1; renderRows(); }
@@ -1353,6 +1387,10 @@ function parseEmailThread(text){
     return { date:m[1], from:m[2], text:m[3] };
   }).filter(Boolean);
 }
+// Each bubble opens collapsed to one line (a real preview, not a generic
+// label) and expands to the full synced text on click — a plain wall of
+// same-length paragraphs was the thing he said he couldn't read as a
+// conversation. Bubbles long enough to matter get a small "tap to expand" hint.
 function emailThreadBubbles(r){
   const msgs = parseEmailThread(r.email_thread);
   if(!msgs.length){
@@ -1360,19 +1398,36 @@ function emailThreadBubbles(r){
   }
   return msgs.map(m=>{
     const fromThem = m.from.toLowerCase()==='them';
+    const isLong = (m.text||'').length > 66;
+    const toggle = "const s=this.style; const open=s.whiteSpace==='normal'; s.whiteSpace=open?'nowrap':'normal'; s.textOverflow=open?'ellipsis':'unset'; const h=this.nextElementSibling; if(h) h.style.display=open?'':'none';";
     return `<div style="display:flex;justify-content:${fromThem?'flex-start':'flex-end'};margin:6px 0;">
       <div style="max-width:78%;background:${fromThem?'var(--panel2,#f3f0e9)':'#dfeee2'};border-radius:12px;padding:8px 12px;font-size:12.5px;line-height:1.4;">
         <div style="font-weight:700;font-size:10.5px;color:var(--gray);margin-bottom:2px;">${fromThem?'Them':'Us'} · ${esc(m.date)}</div>
-        <div>${esc(m.text)}</div>
+        <div ${isLong?`onclick="${toggle}"`:''} style="${isLong?'cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;':''}max-width:100%;">${esc(m.text)}</div>
+        ${isLong ? `<div class="muted" style="font-size:10px;margin-top:2px;">tap to expand</div>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+// A one-line, plain-English read on where this conversation stands and
+// what to do next — the "add something else useful" ask, without turning
+// the popup into another dashboard.
+function emailNextStepHint(r){
+  if(r.reply_asking_for_quote) return '💰 They\'re waiting on a price — decide what to quote, then reply or call.';
+  if(r.email_engagement==='Positive') return '🟢 Active conversation — worth a reply while it\'s warm.';
+  if(r.email_engagement==='Medium') return '🟡 Gone quiet for a while — a short nudge could restart it.';
+  if(r.email_engagement==='Low') return '🔴 No reply yet — consider a follow-up email or a call instead.';
+  return '';
 }
 function showEmailThread(id){
   const r = DATA.find(x=>x.id===id);
   if(!r) return;
   modalReturnTo = null;
   const tierMeta = ENGAGEMENT_TIER_META[r.email_engagement];
+  const daysSince = r.last_email_reply_date ? daysUntil(r.last_email_reply_date) : (r.email_outreach_date ? daysUntil(r.email_outreach_date) : null);
+  const hint = emailNextStepHint(r);
+  const mailSubject = encodeURIComponent('Re: Rizmac Clothing Line Co — ' + (r.company||''));
+  const mailHref = r.email ? `mailto:${encodeURIComponent(r.email)}?subject=${mailSubject}` : null;
   document.getElementById('modalBody').innerHTML = `
     <button class="modal-close-btn" onclick="closeModal()" title="Close" aria-label="Close">✕</button>
     <h2 style="margin-bottom:2px;">✉️ ${esc(r.name||'—')}</h2>
@@ -1380,20 +1435,26 @@ function showEmailThread(id){
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
       <div style="font-weight:700;font-size:12.5px;">${r.email_engagement ? (tierMeta?tierMeta.icon:'') + ' ' + esc(r.email_engagement) : '⏳ Awaiting first sync'}</div>
       ${r.email_engagement ? engagementBar(r.email_engagement) : ''}
-      <div class="muted" style="font-size:11.5px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'} from them</div>
+      <div class="muted" style="font-size:11.5px;">${r.email_reply_count||0} repl${r.email_reply_count===1?'y':'ies'} from them${daysSince!==null?' · last activity '+(daysSince===0?'today':Math.abs(daysSince)+'d ago'):''}</div>
     </div>
+    ${hint ? `<div class="muted" style="margin-top:6px;font-size:12px;">${hint}</div>` : ''}
     ${r.reply_asking_for_quote ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px;color:#8a5a1e;font-weight:600;">💰 Their latest reply looks like it's asking about pricing/quotation — nothing has been sent back. Decide what to quote, then either send it yourself or leave an instruction below.</div>` : ''}
     <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px;max-height:38vh;overflow-y:auto;background:var(--panel,#fff);">
       ${emailThreadBubbles(r)}
     </div>
+    <div class="muted" style="font-size:11px;margin-top:4px;">Tap any long message above to expand it — click again to collapse.</div>
     <div style="margin-top:14px;">
       <label style="font-size:12px;font-weight:600;">📝 Instruction for next sync ${r.pending_email_instruction_date ? '<span class=\"muted\" style=\"font-weight:400;\">— left '+esc(r.pending_email_instruction_date)+'</span>' : ''}</label>
       <textarea id="emailInstructionBox" rows="3" placeholder="e.g. 'Send them the standard uniform price list' or 'I'll call them first, don't follow up by email yet'" style="width:100%;margin-top:5px;font-size:12.5px;">${esc(r.pending_email_instruction||'')}</textarea>
       <div class="muted" style="font-size:11px;margin-top:3px;">This is only a note for you/the sync job to read — nothing gets sent automatically. Leave it blank and save to clear it.</div>
     </div>
     <div class="modal-actions">
-      <div><a href="#" onclick="event.preventDefault();closeModal();openModal(${r.id});" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
-      <div><button class="btn" onclick="closeModal()">Close</button><button class="btn sage" onclick="saveEmailInstruction(${r.id})">Save instruction</button></div>
+      <div><a href="#" onclick="event.preventDefault();openModal(${r.id});modalReturnTo='emailthread';modalReturnToId=${r.id};" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
+      <div style="display:flex;gap:8px;">
+        ${mailHref ? `<a class="btn ghost" href="${mailHref}" style="text-decoration:none;">✉️ Reply by email</a>` : ''}
+        <button class="btn" onclick="closeModal()">Close</button>
+        <button class="btn sage" onclick="saveEmailInstruction(${r.id})">Save instruction</button>
+      </div>
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
@@ -1413,9 +1474,14 @@ function saveEmailInstruction(id){
   closeModal();
   alert(text ? 'Instruction saved — it will show up in the sync job\'s next report.' : 'Instruction cleared.');
 }
+// Renders straight into its own "📧 Emails" dashboard tab now (previously a section
+// stacked inside Automation) — kept as a separate function/panel from Calls per his
+// "you could not put email and calls together... separate tab" request.
 function renderCorrespondencePanel(){
+  const panel = document.getElementById('panel-correspondence');
+  if(!panel) return;
   const emailed = DATA.filter(r=>!r.archived && !r.deleted && r.email_outreach_sent);
-  if(!emailed.length) return '';
+  if(!emailed.length){ panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No emails sent yet — once outreach starts, replies will show up here automatically.</div>'; return; }
   const quoteAsks = emailed.filter(r=>r.reply_asking_for_quote);
   const positive = emailed.filter(r=>r.email_engagement==='Positive');
   const medium = emailed.filter(r=>r.email_engagement==='Medium');
@@ -1431,8 +1497,8 @@ function renderCorrespondencePanel(){
         ${list.length ? list.map(correspondenceRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
       </div>
     </div>`;
-  return `
-    <div class="automation-section-head">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
+  panel.innerHTML = `
+    <div class="automation-section-head" style="margin-top:0;">📧 Correspondence — live, from Gmail ${syncedAt ? `<span class="muted" style="font-weight:400;font-size:11px;">— last synced ${esc(new Date(syncedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>` : '<span class="muted" style="font-weight:400;font-size:11px;">— waiting for the first sync</span>'}</div>
     ${quoteAsks.length ? `<div style="background:#fdf1e4;border:1px solid #e8b979;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-weight:700;font-size:12.5px;color:#8a5a1e;">💰 ${quoteAsks.length} contact${quoteAsks.length===1?'':'s'} asking about pricing/quotation — needs your decision before anything goes back</div>
       ${quoteAsks.map(r=>`<div style="cursor:pointer;padding:5px 0;font-size:12.5px;" onclick="showEmailThread(${r.id});"><b>${esc(r.company||'—')}</b> — ${esc(r.name||'—')}${r.last_email_snippet?' — “'+esc(r.last_email_snippet)+'”':''}</div>`).join('')}
@@ -1487,9 +1553,13 @@ function callRow(r){
     <div style="flex:none;text-align:right;font-size:11px;">${badge}</div>
   </div>`;
 }
+// Renders straight into its own "📞 Calls" dashboard tab (previously a section
+// stacked inside Automation) — split out per his "separate tab" request.
 function renderCallsPanel(){
+  const panel = document.getElementById('panel-calls');
+  if(!panel) return;
   const active = DATA.filter(r=>!r.archived && !r.deleted && isCallable(r) && r.next_followup);
-  if(!active.length) return '';
+  if(!active.length){ panel.innerHTML = '<div class="muted" style="padding:10px 2px;">No calls due — this queue is built from each contact\'s Next Follow-up date, so it fills in as you set those.</div>'; return; }
   const overdue = active.filter(r=>daysUntil(r.next_followup)<0).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
   const dueToday = active.filter(r=>daysUntil(r.next_followup)===0);
   const upcoming = active.filter(r=>{ const d=daysUntil(r.next_followup); return d>0 && d<=3; }).sort((a,b)=>daysUntil(a.next_followup)-daysUntil(b.next_followup));
@@ -1500,8 +1570,8 @@ function renderCallsPanel(){
         ${list.length ? list.map(callRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
       </div>
     </div>`;
-  return `
-    <div class="automation-section-head">📞 Calls — your live call queue <span class="muted" style="font-weight:400;font-size:11px;">— built from each contact's Next Follow-up date; you make the call, then log it here</span></div>
+  panel.innerHTML = `
+    <div class="automation-section-head" style="margin-top:0;">📞 Calls — your live call queue <span class="muted" style="font-weight:400;font-size:11px;">— built from each contact's Next Follow-up date; you make the call, then log it here</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       ${col('Overdue', '🔴', overdue, 'Nothing overdue.')}
       ${col('Due today', '🟡', dueToday, 'Nothing due today.')}
@@ -1539,8 +1609,8 @@ function showCallLog(id){
       <div style="margin-top:6px;"><label style="font-size:12px;">Next follow-up date</label><input type="date" id="callNextFollowup" value="${esc(defaultNext)}" style="margin-left:8px;font-size:12.5px;"></div>
     </div>
     <div class="modal-actions">
-      <div><a href="#" onclick="event.preventDefault();closeModal();openModal(${r.id});" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
-      <div><button class="btn" onclick="closeModal()">Close</button><button class="btn sage" onclick="saveCallLog(${r.id})">Save call</button></div>
+      <div><a href="#" onclick="event.preventDefault();openModal(${r.id});modalReturnTo='calllog';modalReturnToId=${r.id};" style="font-size:12px;color:var(--navy);text-decoration:underline;">View full contact record →</a></div>
+      <div style="display:flex;gap:8px;"><button class="btn" onclick="closeModal()">Close</button><button class="btn sage" onclick="saveCallLog(${r.id})">Save call</button></div>
     </div>
   `;
   document.getElementById('overlay').classList.add('show');
@@ -1577,6 +1647,56 @@ function saveCallLog(id){
     applyFilters(); renderCards(); renderAutomationPanel();
     alert('Could not save this call log: ' + err.message);
   });
+}
+// ============================================================
+// CLEANUP REVIEW — surfaces the same "ineffective contact" categories
+// Mohammad already has in a separate Airtable Interface (Archived Reason:
+// No response after follow-ups / Not a fit / Manual, plus Status = Not
+// Interested), but inside the CRM itself so he can review and delete
+// without leaving it. Nothing here is ever auto-deleted — deleting from a
+// contact's full record (the 🗑 button there) sets Record Status =
+// "Deleted" permanently in Airtable rather than removing the row, which is
+// exactly what stops a re-run of lead-gen from ever recreating them.
+// ============================================================
+function cleanupRow(r){
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
+    <div style="flex:1;min-width:0;cursor:pointer;" onclick="openModal(${r.id});">
+      <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.company||'—')}</div>
+      <div class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.name||'—')}${r.country?' · '+esc(r.country):''}${r.last_contact?' · last contact '+esc(r.last_contact):''}</div>
+    </div>
+    <button class="btn ghost small" style="border-color:var(--red);color:var(--red);flex:none;" title="Delete permanently — kept as a do-not-contact record" onclick="deleteRecord(${r.id});">🗑</button>
+  </div>`;
+}
+function renderCleanupPanel(){
+  const panel = document.getElementById('panel-cleanup');
+  if(!panel) return;
+  const pool = DATA.filter(r=>!r.deleted);
+  const noResponse = pool.filter(r=>r.archived && r.archived_reason==='No response after follow-ups');
+  const notFit = pool.filter(r=>r.archived && r.archived_reason==='Not a fit');
+  const manual = pool.filter(r=>r.archived && r.archived_reason!=='No response after follow-ups' && r.archived_reason!=='Not a fit');
+  const declined = pool.filter(r=>!r.archived && r.status==='Not Interested');
+  const total = noResponse.length + notFit.length + manual.length + declined.length;
+  const tabCountCleanup = document.getElementById('tabCount-cleanup');
+  if(tabCountCleanup) tabCountCleanup.textContent = total;
+  if(!total){ panel.innerHTML = '<div class="muted" style="padding:10px 2px;">Nothing to review right now — this fills in as the daily automation archives non-responders or flags a poor fit, or when you mark someone Not Interested.</div>'; return; }
+  const col = (title, icon, list, emptyText, note) => `
+    <div style="flex:1;min-width:240px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div style="padding:8px 10px;background:var(--panel2, #f7f4ee);font-weight:700;font-size:12.5px;border-bottom:1px solid var(--border);">${icon} ${esc(title)} <span class="muted" style="font-weight:400;">(${list.length})</span></div>
+      ${note ? `<div class="muted" style="font-size:11px;padding:6px 10px 0;">${esc(note)}</div>` : ''}
+      <div style="max-height:360px;overflow-y:auto;">
+        ${list.length ? list.map(cleanupRow).join('') : `<div class="muted" style="padding:12px 10px;font-size:12px;">${esc(emptyText)}</div>`}
+      </div>
+    </div>`;
+  panel.innerHTML = `
+    <div class="automation-section-head" style="margin-top:0;">🧹 Contacts worth reviewing — ${total} total</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px;">These are flagged as low-value, but nothing is ever deleted automatically — review each tab and click 🗑 on anyone you don't want to keep. Deleting keeps a permanent record marked "do-not-contact," so they can never come back even if the same lead is generated again later.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${col('No Response After Follow-ups', '📭', noResponse, 'Nobody here yet.', 'Got 3 auto follow-ups, never replied.')}
+      ${col('Not a Fit', '🚫', notFit, 'Nobody here yet.', 'Auto-flagged as unlikely to buy uniforms (e.g. wrong industry, wrong region).')}
+      ${col('Manually Archived', '🗄', manual, 'Nobody here yet.', 'Archived by you or without a specific auto-reason.')}
+      ${col('Declined (Not Interested)', '❌', declined, 'Nobody here yet.', 'Explicitly said no.')}
+    </div>
+  `;
 }
 function renderAutomationPanel(){
   const panel = document.getElementById('panel-automation');
@@ -1664,9 +1784,7 @@ function renderAutomationPanel(){
     <div class="automation-section-head">✉️ Email outreach <span class="muted" style="font-weight:400;font-size:11.5px;">— first emails always wait for your go-ahead; only follow-ups and replies happen on their own</span></div>
     <div class="cards compact">${emailCards}</div>
 
-    ${renderCorrespondencePanel()}
-
-    ${renderCallsPanel()}
+    <div class="muted" style="margin-top:12px;font-size:12px;">Correspondence detail and call queue moved to their own tabs — <a href="#" onclick="event.preventDefault();switchDashboardTab('correspondence');return false;" style="color:var(--navy);text-decoration:underline;">📧 Emails</a> and <a href="#" onclick="event.preventDefault();switchDashboardTab('calls');return false;" style="color:var(--navy);text-decoration:underline;">📞 Calls</a>.</div>
 
     <div style="margin-top:16px;font-size:12.5px;color:var(--gray);">Last 7 days: ${sum('invites_sent')} LinkedIn invites · ${sum('followups_sent')} LinkedIn follow-ups · ${sum('emails_sent')} emails · ${sum('email_followups_sent')} email follow-ups · ${sum('replies')+sum('email_replies')} total replies · ${sum('archived')} archived</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
@@ -2285,6 +2403,9 @@ function renderCards(){
   renderCompanyPanel(active);
   renderClosedDealsPanel(active);
   renderActivityPanel(active);
+  renderCorrespondencePanel();
+  renderCallsPanel();
+  renderCleanupPanel();
   renderRizmacCharts(active);
   updateTodoBadgeRz();
 }
@@ -2563,6 +2684,8 @@ function resetAllFilters(){
   showNeedsReviewOnly = false;
   showMeetingSoonOnly = false;
   showContactedOnly = false;
+  showSystemOnly = false;
+  showAlertsOnly = false;
 }
 function clearAllFilters(){
   resetAllFilters();
@@ -2613,6 +2736,8 @@ function applyFilters(){
     if(showQuotedStaleOnly && !isQuotedStale(r)) return false;
     if(showColdOnly && !isCold(r)) return false;
     if(showNeedsReviewOnly && !isNeedsReview(r)) return false;
+    if(showSystemOnly && !isSystemDriven(r)) return false;
+    if(showAlertsOnly && !isNeedsAttention(r)) return false;
     if(showMeetingSoonOnly && !isMeetingSoon(r)) return false;
     if(showContactedOnly && (r.status||'Not Contacted')==='Not Contacted') return false;
     if(segment && r.segment!==segment) return false;
@@ -3092,6 +3217,8 @@ function closeModal(){
     if(returnTo==='meetings'){ isNajmat ? showNajmatMeetingsView() : showMeetingsView(); }
     else if(returnTo==='today'){ isNajmat ? najmatRenderTodayView() : renderTodayView(); }
     else if(returnTo==='todo'){ isNajmat ? najmatShowTodoView() : showTodoView(); }
+    else if(returnTo==='emailthread'){ showEmailThread(modalReturnToId); }
+    else if(returnTo==='calllog'){ showCallLog(modalReturnToId); }
   }
 }
 
@@ -4785,6 +4912,7 @@ document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id
 
 boot();
 initCompanyTab();
+applyTabScope(activeDashboardTab);
 applyDashboardTabState();
 </script>
 </body>
