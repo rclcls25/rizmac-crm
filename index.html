@@ -2268,11 +2268,28 @@ function pushDelete(rid){
     alert('Could not delete from Airtable: ' + e.message);
   });
 }
+// Self-healing fix for a bug found 2026-09-12: any contact whose Airtable
+// "Dashboard ID" field is blank (e.g. created directly by an automation
+// rather than the CRM's own +Add prospect flow) was falling back to id=0 in
+// fromAirtable(), so EVERY blank-ID contact shared the same id — clicking or
+// deleting any one of them actually operated on whichever one loaded first.
+// A one-time backfill fixed the 779 contacts already affected; this repairs
+// any new ones the same way going forward, silently, on every load.
+function repairMissingDashboardIds(){
+  const missing = DATA.filter(r=>!r.id);
+  if(!missing.length) return;
+  let nextId = DATA.reduce((m,r)=>Math.max(m, r.id||0), 0) + 1;
+  missing.forEach(r=>{
+    r.id = nextId++;
+    airtablePatch(r._rid, { [F.dashboardId]: r.id }).catch(()=>{ /* best-effort; next load retries */ });
+  });
+}
 function loadDataFromAirtable(){
   syncStatus('busy','Syncing…');
   loadRzTasks();
   return fetchAllAirtableRecords().then(recs=>{
     DATA = recs.map(fromAirtable);
+    repairMissingDashboardIds();
     populateFilterOptions();
     applyFilters();
     syncStatus('ok','Synced');
